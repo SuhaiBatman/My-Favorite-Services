@@ -1,6 +1,10 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import {
+  CLOUD_SUPABASE_ANON_KEY,
+  CLOUD_SUPABASE_URL,
+} from '../constants/supabase-cloud';
+import {
   LOCAL_SUPABASE_API_URL,
   LOCAL_SUPABASE_HOST,
 } from '../constants/generated/supabase-host';
@@ -24,7 +28,7 @@ export function resolveSupabaseUrl(): string {
   const useLocal = shouldUseLocalSupabase(envUrl);
 
   if (!useLocal) {
-    return envUrl ?? '';
+    return envUrl || CLOUD_SUPABASE_URL;
   }
 
   if (Platform.OS === 'web') {
@@ -43,10 +47,15 @@ export function resolveSupabaseUrl(): string {
 }
 
 export function resolveSupabaseAnonKey(): string {
-  return process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim() ?? '';
+  return process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim() || CLOUD_SUPABASE_ANON_KEY;
 }
 
 export function shouldUseLocalSupabase(envUrl?: string): boolean {
+  // Release builds must never hit a dev-machine LAN IP baked into generated files.
+  if (!__DEV__) {
+    return false;
+  }
+
   const url = envUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
   return (
     process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL === 'true' ||

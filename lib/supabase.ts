@@ -11,11 +11,14 @@ import {
 const supabaseUrl = resolveSupabaseUrl();
 const supabaseAnonKey = resolveSupabaseAnonKey();
 
-if (__DEV__ && (!supabaseUrl || !supabaseAnonKey)) {
-  console.warn(
-    '[supabase] Missing EXPO_PUBLIC_SUPABASE_KEY. ' +
-      'For local dev: copy .env.example → .env.local and run `npm run supabase:start`.'
-  );
+if (!supabaseUrl || !supabaseAnonKey) {
+  const message =
+    '[supabase] Missing URL or anon key. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_KEY.';
+  if (__DEV__) {
+    console.warn(message + ' For local dev: copy .env.example → .env.local and run `npm run supabase:start`.');
+  } else {
+    throw new Error(message);
+  }
 }
 
 if (__DEV__ && isLocalSupabase()) {
