@@ -376,9 +376,17 @@ export default function ProviderProfileScreen() {
             </View>
           ) : null}
 
-          {availabilityList.length > 0 ? (
+          {availabilityList.length > 0 || profile.flexible_hours ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Availability</Text>
+              {profile.flexible_hours ? (
+                <View style={styles.flexibleHoursRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={theme.colors.secondary} />
+                  <Text style={styles.flexibleHoursText}>
+                    Flexible hours — listed times may vary from week to week.
+                  </Text>
+                </View>
+              ) : null}
               {availabilityList.map((slot) => (
                 <Text
                   key={`${slot.day_of_week}-${slot.start_minutes}`}
@@ -610,6 +618,18 @@ function createStyles(theme: AppTheme) {
     fontSize: theme.typography.sizes.subbody,
     color: theme.colors.textSecondary,
     marginBottom: 6,
+  },
+  flexibleHoursRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  flexibleHoursText: {
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.medium,
+    fontSize: theme.typography.sizes.subbody,
+    color: theme.colors.textSecondary,
   },
   emptyTitle: {
     fontFamily: theme.typography.fontFamily.semiBold,

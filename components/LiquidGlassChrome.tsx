@@ -38,7 +38,6 @@ function SelectionBubble({
   tabWidth: number;
   bubbleX: SharedValue<number>;
 }) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   const bubbleStyle = useAnimatedStyle(() => ({
@@ -88,7 +87,6 @@ function FrostedPill({
   radius: number;
   children: React.ReactNode;
 }) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   return (
@@ -162,7 +160,6 @@ export function LiquidGlassChrome({
   fab,
   hasFab = true,
 }: LiquidGlassChromeProps) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   const radius = height / 2;

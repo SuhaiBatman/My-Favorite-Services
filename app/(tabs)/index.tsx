@@ -120,7 +120,7 @@ export default function HomeScreen(props: HomeScreenProps = {}) {
   if (hasRole('employee')) {
     return <EmployeeHomeScreen {...props} />;
   }
-  if (role === 'user') {
+  if (hasRole('user')) {
     return <UserHomeScreen {...props} />;
   }
   return <ProviderHomeScreen {...props} />;
@@ -199,7 +199,7 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
                 style={[styles.notifBtn, styles.devBtn]} 
                 onPress={() => setDevModalVisible(true)}
               >
-                <Ionicons name="code-slash" size={20} color="#fff" />
+                <Ionicons name="code-slash" size={20} color={theme.colors.textInverted} />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.notifBtn}>
@@ -352,7 +352,9 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
                   <>
                     <Ionicons name="people-outline" size={40} color={theme.colors.border} />
                     <Text style={styles.emptyTitle}>Search for a provider</Text>
-                    <Text style={styles.emptySubtitle}>Try "dermatologist", "barber", or a name</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Try &quot;dermatologist&quot;, &quot;barber&quot;, or a name
+                    </Text>
                   </>
                 ) : (
                   <>
@@ -400,7 +402,7 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
                 <Text style={styles.devModalTitle}>Developer Panel</Text>
               </View>
               <TouchableOpacity onPress={() => setDevModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#94A3B8" />
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
             
@@ -437,7 +439,7 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
                     <Text style={styles.devRouteLabel}>{route.label}</Text>
                     <Text style={styles.devRoutePath}>{route.path}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#475569" />
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.chevron} />
                 </TouchableOpacity>
               ))}
 
@@ -787,11 +789,11 @@ function createStyles(theme: AppTheme) {
   devModalContent: {
     width: '100%',
     maxHeight: '80%',
-    backgroundColor: '#0F172A',
+    backgroundColor: theme.colors.surface,
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.colors.border,
   },
   devModalHeader: {
     flexDirection: 'row',
@@ -799,7 +801,7 @@ function createStyles(theme: AppTheme) {
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: theme.colors.border,
   },
   devHeaderTitleRow: {
     flexDirection: 'row',
@@ -809,7 +811,7 @@ function createStyles(theme: AppTheme) {
   devModalTitle: {
     fontFamily: theme.typography.fontFamily.bold,
     fontSize: 18,
-    color: '#F8FAFC',
+    color: theme.colors.textPrimary,
   },
   devModalList: {
     padding: 20,
@@ -831,9 +833,9 @@ function createStyles(theme: AppTheme) {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#1E293B',
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.colors.border,
     alignItems: 'center',
   },
   devRoleChipActive: {
@@ -843,22 +845,22 @@ function createStyles(theme: AppTheme) {
   devRoleChipText: {
     fontFamily: theme.typography.fontFamily.semiBold,
     fontSize: 13,
-    color: '#94A3B8',
+    color: theme.colors.textSecondary,
     textTransform: 'capitalize',
   },
   devRoleChipTextActive: {
-    color: '#0F172A',
+    color: theme.colors.textInverted,
   },
   devRouteItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1E293B',
+    backgroundColor: theme.colors.background,
     padding: 16,
     borderRadius: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.colors.border,
   },
   devRouteInfo: {
     flex: 1,
@@ -866,32 +868,32 @@ function createStyles(theme: AppTheme) {
   devRouteLabel: {
     fontFamily: theme.typography.fontFamily.semiBold,
     fontSize: 14,
-    color: '#F8FAFC',
+    color: theme.colors.textPrimary,
     marginBottom: 2,
   },
   devRoutePath: {
     fontFamily: theme.typography.fontFamily.regular,
     fontSize: 11,
-    color: '#94A3B8',
+    color: theme.colors.textSecondary,
   },
   devInfoBox: {
     marginTop: 20,
     padding: 16,
-    backgroundColor: '#111827',
+    backgroundColor: theme.colors.background,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.colors.border,
   },
   devInfoTitle: {
     fontFamily: theme.typography.fontFamily.bold,
     fontSize: 12,
-    color: '#94A3B8',
+    color: theme.colors.textSecondary,
     marginBottom: 8,
   },
   devInfoText: {
     fontFamily: theme.typography.fontFamily.regular,
     fontSize: 11,
-    color: '#64748B',
+    color: theme.colors.muted,
     marginBottom: 4,
   },
   });

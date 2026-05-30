@@ -28,6 +28,7 @@ create table public.profiles (
   -- Schedule (employee)
   timings text,
   work_days text,
+  flexible_hours boolean not null default false,
 
   -- User preferences
   interests text,

@@ -213,7 +213,7 @@ where id = 'b0000000-0000-4000-8000-000000000008';
 
 update public.profiles set
   first_name = 'Metro', last_name = 'Ride Co', email = 'metro@provider.demo.local',
-  role = 'employee', roles = array['employee', 'user']::text[],
+  role = 'employee', roles = array['user', 'employee', 'business']::text[],
   job_title = 'Private Driver', business_name = 'Metro Ride Co.',
   bio = 'On-demand rides and airport transfers across the Bay Area.',
   phone = '+1 (555) 201-1009', website = 'metroride.demo',
@@ -225,7 +225,7 @@ where id = 'b0000000-0000-4000-8000-000000000009';
 
 update public.profiles set
   first_name = 'GreenNest', last_name = 'Cleaning', email = 'green@provider.demo.local',
-  role = 'employee', roles = array['employee', 'user']::text[],
+  role = 'employee', roles = array['user', 'employee', 'business']::text[],
   job_title = 'Home Cleaning', business_name = 'GreenNest Cleaning',
   bio = 'Eco-friendly home cleaning — standard, deep clean, and move-out packages.',
   phone = '+1 (555) 201-1010', website = 'greennest.demo',

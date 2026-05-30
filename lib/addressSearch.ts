@@ -32,33 +32,8 @@ export function getAddressSearchProvider(): AddressSearchProvider {
   return 'photon';
 }
 
-/** True when a high-quality provider is configured (Mapbox or LocationIQ) */
-export function isHighQualitySearchEnabled(): boolean {
-  return Boolean(MAPBOX_TOKEN || LOCATIONIQ_KEY);
-}
-
 export function isAddressSearchConfigured(): boolean {
   return true;
-}
-
-export function addressSearchSetupMessage(): string {
-  if (MAPBOX_TOKEN) return '';
-  return (
-    'For airport and place search like Google Maps, add a free Mapbox token to .env.local:\n' +
-    'EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.your_token\n' +
-    '(Free at mapbox.com — 100,000 searches/month, no charge within that limit.)'
-  );
-}
-
-export function addressSearchAttribution(provider: AddressSearchProvider): string {
-  switch (provider) {
-    case 'mapbox':
-      return 'Powered by Mapbox · free tier';
-    case 'locationiq':
-      return 'Powered by LocationIQ · free tier';
-    default:
-      return 'Basic search only — add Mapbox token for airports & places';
-  }
 }
 
 // --- Mapbox Search Box (POI + address, best quality) ---
@@ -117,13 +92,13 @@ async function resolveMapbox(mapboxId: string, sessionToken: string): Promise<st
   if (!res.ok) return null;
 
   const json = (await res.json()) as {
-    features?: Array<{
+    features?: {
       properties?: {
         full_address?: string;
         name?: string;
         place_formatted?: string;
       };
-    }>;
+    }[];
   };
 
   const props = json.features?.[0]?.properties;
@@ -194,7 +169,7 @@ async function searchPhoton(query: string): Promise<AddressSuggestion[]> {
   if (!res.ok) return [];
 
   const json = (await res.json()) as {
-    features?: Array<{ properties?: Record<string, string | undefined> }>;
+    features?: { properties?: Record<string, string | undefined> }[];
   };
 
   const seen = new Set<string>();

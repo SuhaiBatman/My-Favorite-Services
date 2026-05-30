@@ -1,14 +1,23 @@
 export type UserRole = 'user' | 'employee' | 'business';
 
-export function rolesForPrimaryRole(primary: UserRole): UserRole[] {
+/** Self-employed users act as consumer, provider, and business owner. */
+export const SELF_EMPLOYED_ROLES: UserRole[] = ['user', 'employee', 'business'];
+
+export function rolesForPrimaryRole(
+  primary: UserRole,
+  isSelfEmployed = false
+): UserRole[] {
+  if (isSelfEmployed) return [...SELF_EMPLOYED_ROLES];
   if (primary === 'employee') return ['employee', 'user'];
   return [primary];
 }
 
 export function normalizeRoles(
   primaryRole: string | null | undefined,
-  roles: string[] | null | undefined
+  roles: string[] | null | undefined,
+  isSelfEmployed = false
 ): UserRole[] {
+  if (isSelfEmployed) return [...SELF_EMPLOYED_ROLES];
   const valid = (r: string): r is UserRole =>
     r === 'user' || r === 'employee' || r === 'business';
 

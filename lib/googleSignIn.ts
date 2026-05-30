@@ -6,9 +6,7 @@ import {
   isSuccessResponse,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
-import {
-  GOOGLE_WEB_CLIENT_ID,
-} from '../constants/google';
+import { getGoogleWebClientId } from '../constants/google';
 import { supabase } from './supabase';
 
 let configured = false;
@@ -16,17 +14,6 @@ let configured = false;
 /** Native Google Sign-In is unavailable in Expo Go (no native module). */
 export function isNativeGoogleSignInAvailable(): boolean {
   return Constants.appOwnership !== 'expo';
-}
-
-function getGoogleWebClientId(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
-  if (fromEnv) return fromEnv;
-
-  const extra = Constants.expoConfig?.extra as { googleWebClientId?: string } | undefined;
-  const fromExtra = extra?.googleWebClientId?.trim();
-  if (fromExtra) return fromExtra;
-
-  return GOOGLE_WEB_CLIENT_ID;
 }
 
 function getGoogleIosClientId(): string | undefined {

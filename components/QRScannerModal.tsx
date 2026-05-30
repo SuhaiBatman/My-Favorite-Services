@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../constants/theme';
-import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
 
 interface QRScannerModalProps {
@@ -13,7 +12,6 @@ interface QRScannerModalProps {
 }
 
 export function QRScannerModal({ visible, onClose, onScanned }: QRScannerModalProps) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   const [permission, requestPermission] = useCameraPermissions();

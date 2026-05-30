@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
+import type { AppTheme } from '../constants/theme';
+import { useAppTheme } from '../contexts/ThemeContext';
+import { useThemedStyles } from '../hooks/use-themed-styles';
 import {
   configureGoogleSignIn,
   isNativeGoogleSignInAvailable,
@@ -12,6 +15,8 @@ type Props = {
 };
 
 export function GoogleSignIn({ disabled = false }: Props) {
+  const { isDark } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const [loading, setLoading] = useState(false);
   const nativeAvailable = isNativeGoogleSignInAvailable();
 
@@ -45,7 +50,7 @@ export function GoogleSignIn({ disabled = false }: Props) {
   return (
     <GoogleSigninButton
       size={GoogleSigninButton.Size.Wide}
-      color={GoogleSigninButton.Color.Light}
+      color={isDark ? GoogleSigninButton.Color.Dark : GoogleSigninButton.Color.Light}
       onPress={handlePress}
       disabled={disabled || loading}
       style={styles.button}
@@ -53,28 +58,30 @@ export function GoogleSignIn({ disabled = false }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  button: {
-    width: '100%',
-    height: 52,
-  },
-  expoGoNotice: {
-    width: '100%',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    backgroundColor: '#FFFBEB',
-  },
-  expoGoTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: '#92400E',
-    marginBottom: 4,
-  },
-  expoGoBody: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: '#B45309',
-  },
-});
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    button: {
+      width: '100%',
+      height: 52,
+    },
+    expoGoNotice: {
+      width: '100%',
+      padding: 14,
+      borderRadius: theme.borderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.primaryLight,
+    },
+    expoGoTitle: {
+      fontFamily: theme.typography.fontFamily.semiBold,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.textPrimary,
+      marginBottom: 4,
+    },
+    expoGoBody: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: 13,
+      color: theme.colors.textSecondary,
+    },
+  });
+}

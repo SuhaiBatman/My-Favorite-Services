@@ -51,6 +51,7 @@ export function ProviderProfileEditSheet({
   const [serviceInput, setServiceInput] = useState('');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [dayTimings, setDayTimings] = useState<Record<string, DayTiming>>({});
+  const [flexibleHours, setFlexibleHours] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export function ProviderProfileEditSheet({
     const schedule = slotsToSchedule(profile.availability ?? []);
     setSelectedDays(schedule.selectedDays);
     setDayTimings(schedule.dayTimings);
+    setFlexibleHours(Boolean(profile.flexible_hours));
   }, [visible, profile]);
 
   const addService = () => {
@@ -111,6 +113,7 @@ export function ProviderProfileEditSheet({
         services: services.length > 0 ? services.join(', ') : undefined,
         work_days: work_days || undefined,
         timings: timings || undefined,
+        flexible_hours: flexibleHours,
       });
 
       if (user?.id) {
@@ -189,6 +192,8 @@ export function ProviderProfileEditSheet({
           <ProfileScheduleEditor
             selectedDays={selectedDays}
             dayTimings={dayTimings}
+            flexibleHours={flexibleHours}
+            onFlexibleHoursChange={setFlexibleHours}
             onChange={handleScheduleChange}
           />
 

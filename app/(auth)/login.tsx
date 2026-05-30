@@ -1,20 +1,94 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { getAuthRedirectUri } from '../../lib/authCallback';
 import { GoogleSignIn } from '../../components/GoogleSignIn';
+import type { AppTheme } from '../../constants/theme';
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { useThemedStyles } from '../../hooks/use-themed-styles';
 
 export default function LoginScreen() {
+  const { theme, isDark } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
+  const [verificationSource, setVerificationSource] = useState<'signin' | 'signup' | null>(null);
+
+  function isEmailNotConfirmedError(error: { message: string }) {
+    return error.message.toLowerCase().includes('email not confirmed');
+  }
+
+  function isExistingAccountError(error: { message: string }) {
+    const message = error.message.toLowerCase();
+    return message.includes('already registered') || message.includes('user already exists');
+  }
+
+  async function sendVerificationCode(): Promise<boolean> {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    if (error) {
+      Alert.alert('Error', error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function goToEmailVerification(source: 'signin' | 'signup', resendCode = true) {
+    setVerificationSource(source);
+    setIsSignUp(source === 'signup');
+    if (resendCode) {
+      await sendVerificationCode();
+    }
+    setPendingVerification(true);
+    Alert.alert(
+      'Email Not Verified',
+      'Your email address has not been verified yet. Enter the 6-digit code we sent to your email, or request a new one.'
+    );
+  }
+
+  async function handleExistingAccountOnSignUp() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (!error) {
+      return;
+    }
+
+    if (isEmailNotConfirmedError(error)) {
+      await goToEmailVerification('signup');
+      return;
+    }
+
+    Alert.alert(
+      'Account Exists',
+      'An account with this email already exists. Please sign in instead.',
+      [{ text: 'OK', onPress: () => setIsSignUp(false) }]
+    );
+  }
 
   async function signInWithEmail() {
     setLoading(true);
@@ -24,15 +98,8 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      if (error.message.includes('Email not confirmed')) {
-        Alert.alert(
-          'Email Not Verified',
-          'Please verify your email before signing in. Would you like to enter your verification code now?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Verify Now', onPress: () => setPendingVerification(true) }
-          ]
-        );
+      if (isEmailNotConfirmedError(error)) {
+        await goToEmailVerification('signin');
       } else {
         Alert.alert('Error', error.message);
       }
@@ -45,35 +112,24 @@ export default function LoginScreen() {
     const { data, error } = await supabase.auth.signUp({
       email: email,
       password: password,
-      options: {
-        emailRedirectTo: getAuthRedirectUri(),
-      },
     });
 
     if (error) {
-      if (error.message.includes('already registered') || error.message.includes('User already exists')) {
-        Alert.alert(
-          'Account Exists',
-          'An account with this email already exists. Please sign in instead.',
-          [{ text: 'OK', onPress: () => setIsSignUp(false) }]
-        );
+      if (isExistingAccountError(error)) {
+        await handleExistingAccountOnSignUp();
       } else {
         Alert.alert('Error', error.message);
       }
     } else if (data.session) {
-       // Handled by layout
+      // Handled by layout
     } else if (data.user && data.user.identities && data.user.identities.length === 0) {
-      // This happens when "Confirm Email" is on and user already exists (Supabase security feature)
-      Alert.alert(
-        'Account Exists',
-        'An account with this email already exists. Please sign in instead.',
-        [{ text: 'OK', onPress: () => setIsSignUp(false) }]
-      );
+      await handleExistingAccountOnSignUp();
     } else {
+      setVerificationSource('signup');
       setPendingVerification(true);
       Alert.alert(
         'Verify your email',
-        'We sent a 6-digit code and a confirmation link. Enter the code below, or tap the link in the email to open the app.'
+        'We sent a 6-digit code to your email. Enter it below to finish creating your account.'
       );
     }
     setLoading(false);
@@ -105,15 +161,9 @@ export default function LoginScreen() {
 
   async function resendVerification() {
     setLoading(true);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: { emailRedirectTo: getAuthRedirectUri() },
-    });
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      Alert.alert('Sent', 'A new verification code and link were sent to your email.');
+    const sent = await sendVerificationCode();
+    if (sent) {
+      Alert.alert('Sent', 'A new 6-digit verification code was sent to your email.');
     }
     setLoading(false);
   }
@@ -144,7 +194,6 @@ export default function LoginScreen() {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-      // Sign in via Supabase Auth
       if (credential.identityToken) {
         const { error } = await supabase.auth.signInWithIdToken({
           provider: 'apple',
@@ -168,29 +217,38 @@ export default function LoginScreen() {
   }
 
   if (pendingVerification) {
+    const verificationSubtitle =
+      verificationSource === 'signin'
+        ? `Your email hasn't been verified yet. Enter the 6-digit code we sent to ${email} to sign in.`
+        : verificationSource === 'signup'
+          ? `Your email hasn't been verified yet. Enter the 6-digit code we sent to ${email} to finish creating your account.`
+          : `We sent a 6-digit code to ${email}. Enter it below to verify your account.`;
+
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.title}>Check your email</Text>
-          <Text style={styles.subtitle}>
-            We sent a 6-digit code and a confirmation link to {email}. Enter the code here, or tap
-            the link in your email to open the app.
-          </Text>
+          <Text style={styles.title}>Verify your email</Text>
+          <Text style={styles.subtitle}>{verificationSubtitle}</Text>
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Verification Code</Text>
             <TextInput
-              style={[styles.input, { textAlign: 'center', fontSize: 24, letterSpacing: 4 }]}
+              style={[styles.input, styles.otpInput]}
               onChangeText={setOtp}
               value={otp}
               placeholder="000000"
+              placeholderTextColor={theme.colors.textSecondary}
               keyboardType="number-pad"
               maxLength={6}
             />
           </View>
 
           <TouchableOpacity style={styles.primaryButton} onPress={verifyOtp} disabled={loading || otp.length < 6}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Verify Account</Text>}
+            {loading ? (
+              <ActivityIndicator color={theme.colors.textInverted} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Verify Account</Text>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -201,8 +259,16 @@ export default function LoginScreen() {
             <Text style={styles.secondaryButtonText}>Resend verification email</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setPendingVerification(false)}>
-            <Text style={styles.secondaryButtonText}>Back to Sign Up</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => {
+              setPendingVerification(false);
+              setOtp('');
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {verificationSource === 'signin' ? 'Back to Sign In' : 'Back to Sign Up'}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -210,7 +276,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
@@ -221,12 +287,15 @@ export default function LoginScreen() {
             {isSignUp ? 'Sign up to get started' : 'Sign in to continue to your account'}
           </Text>
 
-          {/* Social Sign In Buttons */}
           <View style={styles.socialContainer}>
             {Platform.OS === 'ios' && (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                buttonStyle={
+                  isDark
+                    ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                    : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                }
                 cornerRadius={12}
                 style={styles.appleButton}
                 onPress={signInWithApple}
@@ -241,7 +310,6 @@ export default function LoginScreen() {
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Email Input */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -249,12 +317,12 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               value={email}
               placeholder="email@address.com"
+              placeholderTextColor={theme.colors.textSecondary}
               autoCapitalize="none"
               keyboardType="email-address"
             />
           </View>
 
-          {/* Password Input */}
           <View style={styles.inputContainer}>
             <View style={styles.passwordHeader}>
               <Text style={styles.label}>Password</Text>
@@ -271,33 +339,31 @@ export default function LoginScreen() {
                 value={password}
                 secureTextEntry={!showPassword}
                 placeholder="Password"
+                placeholderTextColor={theme.colors.textSecondary}
                 autoCapitalize="none"
               />
-              <TouchableOpacity 
-                style={styles.eyeIcon} 
+              <TouchableOpacity
+                style={styles.eyeIcon}
                 onPress={() => setShowPassword(!showPassword)}
               >
-                <Ionicons name={showPassword ? "eye-off" : "eye"} size={20} color="#6B7280" />
+                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => isSignUp ? signUpWithEmail() : signInWithEmail()}
+            onPress={() => (isSignUp ? signUpWithEmail() : signInWithEmail())}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={theme.colors.textInverted} />
             ) : (
               <Text style={styles.primaryButtonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.secondaryButton}
-            onPress={() => setIsSignUp(!isSignUp)}
-          >
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setIsSignUp(!isSignUp)}>
             <Text style={styles.secondaryButtonText}>
               {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
             </Text>
@@ -308,128 +374,135 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    paddingTop: 64, // Add padding for iOS status bar if not using SafeAreaView
-  },
-  title: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 32,
-    color: '#111827',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    color: '#6B7280',
-    marginBottom: 32,
-  },
-  socialContainer: {
-    marginBottom: 24,
-    gap: 12,
-  },
-  appleButton: {
-    width: '100%',
-    height: 52,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    fontFamily: 'Inter_400Regular',
-    color: '#6B7280',
-    paddingHorizontal: 16,
-    fontSize: 14,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  passwordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  label: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: '#374151',
-  },
-  forgotPasswordText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: '#2563EB', // Blue link color
-  },
-  input: {
-    fontFamily: 'Inter_400Regular',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
-  },
-  passwordInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    backgroundColor: '#F9FAFB',
-  },
-  passwordInput: {
-    flex: 1,
-    fontFamily: 'Inter_400Regular',
-    padding: 16,
-    fontSize: 16,
-    color: '#111827',
-  },
-  eyeIcon: {
-    padding: 16,
-  },
-  primaryButton: {
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  primaryButtonText: {
-    fontFamily: 'Inter_600SemiBold',
-    color: '#fff',
-    fontSize: 16,
-  },
-  secondaryButton: {
-    marginTop: 20,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  secondaryButtonText: {
-    fontFamily: 'Inter_500Medium',
-    color: '#4B5563',
-    fontSize: 14,
-  },
-});
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
+    },
+    content: {
+      flex: 1,
+      padding: theme.spacing.lg,
+      justifyContent: 'center',
+      paddingTop: 64,
+    },
+    title: {
+      fontFamily: theme.typography.fontFamily.bold,
+      fontSize: 32,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.sm,
+    },
+    subtitle: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.sizes.body,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.xl,
+    },
+    socialContainer: {
+      marginBottom: theme.spacing.lg,
+      gap: 12,
+    },
+    appleButton: {
+      width: '100%',
+      height: 52,
+    },
+    dividerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: theme.spacing.lg,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.border,
+    },
+    dividerText: {
+      fontFamily: theme.typography.fontFamily.regular,
+      color: theme.colors.textSecondary,
+      paddingHorizontal: theme.spacing.md,
+      fontSize: theme.typography.sizes.subbody,
+    },
+    inputContainer: {
+      marginBottom: 20,
+    },
+    passwordHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: theme.spacing.sm,
+    },
+    label: {
+      fontFamily: theme.typography.fontFamily.medium,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.textPrimary,
+    },
+    forgotPasswordText: {
+      fontFamily: theme.typography.fontFamily.medium,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.link,
+    },
+    input: {
+      fontFamily: theme.typography.fontFamily.regular,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.md,
+      fontSize: theme.typography.sizes.body,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.surface,
+    },
+    otpInput: {
+      textAlign: 'center',
+      fontSize: 24,
+      letterSpacing: 4,
+    },
+    passwordInputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.surface,
+    },
+    passwordInput: {
+      flex: 1,
+      fontFamily: theme.typography.fontFamily.regular,
+      padding: theme.spacing.md,
+      fontSize: theme.typography.sizes.body,
+      color: theme.colors.textPrimary,
+    },
+    eyeIcon: {
+      padding: theme.spacing.md,
+    },
+    primaryButton: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.borderRadius.md,
+      padding: theme.spacing.md,
+      alignItems: 'center',
+      marginTop: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3,
+      elevation: 3,
+    },
+    primaryButtonText: {
+      fontFamily: theme.typography.fontFamily.semiBold,
+      color: theme.colors.textInverted,
+      fontSize: theme.typography.sizes.body,
+    },
+    secondaryButton: {
+      marginTop: 20,
+      alignItems: 'center',
+      marginBottom: theme.spacing.xl,
+    },
+    secondaryButtonText: {
+      fontFamily: theme.typography.fontFamily.medium,
+      color: theme.colors.textSecondary,
+      fontSize: theme.typography.sizes.subbody,
+    },
+  });
+}

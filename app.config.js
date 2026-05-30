@@ -1,8 +1,24 @@
 /** @type {import('expo/config').ExpoConfig} */
 const appJson = require('./app.json');
+const { syncSupabaseEnv } = require('./scripts/write-supabase-env.cjs');
+const { loadProjectEnv, resolveProfile } = require('./scripts/load-project-env.cjs');
 
-const GOOGLE_WEB_CLIENT_ID =
-  '674563099428-te031jnic99kdf4iel4k92if5m91vaqu.apps.googleusercontent.com';
+const profile = resolveProfile(process.env.APP_ENV);
+process.env.APP_ENV = profile;
+
+const projectEnv = loadProjectEnv(profile);
+for (const [key, value] of Object.entries(projectEnv)) {
+  if (!key.startsWith('_') && value) {
+    process.env[key] = value;
+  }
+}
+
+const supabaseEnv = syncSupabaseEnv({ profile, quiet: true });
+process.env.EXPO_PUBLIC_SUPABASE_URL = supabaseEnv.EXPO_PUBLIC_SUPABASE_URL;
+process.env.EXPO_PUBLIC_SUPABASE_KEY = supabaseEnv.EXPO_PUBLIC_SUPABASE_KEY;
+if (supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL) {
+  process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL = supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL;
+}
 
 function googleIosUrlScheme() {
   const scheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim();
@@ -37,8 +53,11 @@ module.exports = {
     plugins,
     extra: {
       ...appJson.expo.extra,
-      googleWebClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || GOOGLE_WEB_CLIENT_ID,
+      // Baked from `.env.local` or `.env.production` (APP_ENV) — see scripts/run-env.mjs
+      supabaseUrl: supabaseEnv.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: supabaseEnv.EXPO_PUBLIC_SUPABASE_KEY,
+      supabaseUseLocal: supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL,
+      googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? '',
       googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '',
     },
   },

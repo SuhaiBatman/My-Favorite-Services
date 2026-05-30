@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useURL } from 'expo-linking';
+import type { AppTheme } from '../../constants/theme';
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { useThemedStyles } from '../../hooks/use-themed-styles';
 import {
   completeAuthFromCallbackUrl,
   type AuthCallbackParams,
@@ -26,6 +29,8 @@ function buildCallbackUrl(
 
 /** OAuth / email-confirm landing route (matches deep link `.../auth/callback`). */
 export default function AuthCallbackScreen() {
+  const { theme } = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const url = useURL();
   const params = useLocalSearchParams<AuthCallbackParams>();
@@ -46,22 +51,24 @@ export default function AuthCallbackScreen() {
         router.replace('/(auth)/login');
         return;
       }
-      router.replace('/(tabs)');
+      router.replace('/');
     })();
   }, [url, params, router]);
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#111827" />
+      <ActivityIndicator size="large" color={theme.colors.primary} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-});
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.colors.background,
+    },
+  });
+}

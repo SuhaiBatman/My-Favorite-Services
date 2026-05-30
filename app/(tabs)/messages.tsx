@@ -241,7 +241,7 @@ function createStyles(theme: AppTheme) {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: theme.colors.inboxSearch,
     alignItems: 'center',
     justifyContent: 'center',
   },

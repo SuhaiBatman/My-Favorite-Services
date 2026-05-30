@@ -156,7 +156,7 @@ function ProviderScheduleScreen({ externalModalVisible, onExternalModalClose }: 
   const selectedProvider = useMemo(() => MOCK_PROVIDERS.find(p => p.id === selectedProviderId) || MOCK_PROVIDERS[0], [selectedProviderId]);
 
   const [selectedServiceId, setSelectedServiceId] = useState(selectedProvider.services[0].id);
-  const selectedService = useMemo(() => selectedProvider.services.find(s => s.id === selectedServiceId) || selectedProvider.services[0], [selectedProviderId, selectedServiceId]);
+  const selectedService = useMemo(() => selectedProvider.services.find(s => s.id === selectedServiceId) || selectedProvider.services[0], [selectedProvider, selectedServiceId]);
 
   // Calendar State
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -195,7 +195,7 @@ function ProviderScheduleScreen({ externalModalVisible, onExternalModalClose }: 
   useEffect(() => {
     setSelectedServiceId(selectedProvider.services[0].id);
     resetBookingDetails();
-  }, [selectedProviderId, resetBookingDetails]);
+  }, [selectedProvider, resetBookingDetails]);
 
   useEffect(() => {
     resetBookingDetails();

@@ -1,14 +1,19 @@
 /**
- * Google OAuth client IDs (public — safe to embed in the app).
- *
- * - WEB: passed to GoogleSignin.configure() — required for idToken on Android/iOS.
- * - ANDROID: registered in Google Cloud with package + SHA-1; add to Supabase Auth → Google → Client IDs.
+ * Google OAuth client IDs (public in the client app — not secret).
+ * Set EXPO_PUBLIC_GOOGLE_* in `.env` or EAS environment variables.
  */
-export const GOOGLE_WEB_CLIENT_ID =
-  '674563099428-te031jnic99kdf4iel4k92if5m91vaqu.apps.googleusercontent.com';
 
-export const GOOGLE_ANDROID_CLIENT_ID =
-  '674563099428-10bcqnfrk8cvsjcq0mu89dtug89ta219.apps.googleusercontent.com';
+export function getGoogleWebClientId(): string {
+  return process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? '';
+}
+
+export function getGoogleAndroidClientId(): string {
+  return process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ?? '';
+}
 
 /** Comma-separated list for Supabase Dashboard → Auth → Google → Client IDs */
-export const GOOGLE_SUPABASE_CLIENT_IDS = `${GOOGLE_WEB_CLIENT_ID},${GOOGLE_ANDROID_CLIENT_ID}`;
+export function getGoogleSupabaseClientIds(): string {
+  const web = getGoogleWebClientId();
+  const android = getGoogleAndroidClientId();
+  return [web, android].filter(Boolean).join(',');
+}

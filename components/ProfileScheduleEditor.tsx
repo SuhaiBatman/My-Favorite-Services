@@ -27,12 +27,16 @@ const AMPM_WHEEL = ['', '', 'AM', 'PM', '', ''];
 type ProfileScheduleEditorProps = {
   selectedDays: string[];
   dayTimings: Record<string, DayTiming>;
+  flexibleHours: boolean;
+  onFlexibleHoursChange: (value: boolean) => void;
   onChange: (selectedDays: string[], dayTimings: Record<string, DayTiming>) => void;
 };
 
 export function ProfileScheduleEditor({
   selectedDays,
   dayTimings,
+  flexibleHours,
+  onFlexibleHoursChange,
   onChange,
 }: ProfileScheduleEditorProps) {
   const styles = useThemedStyles(createStyles);
@@ -116,6 +120,23 @@ export function ProfileScheduleEditor({
       ) : (
         <Text style={styles.hint}>Select at least one day to set your availability.</Text>
       )}
+
+      <View style={styles.divider} />
+      <TouchableOpacity
+        style={[styles.flexibleCard, flexibleHours && styles.flexibleCardActive]}
+        onPress={() => onFlexibleHoursChange(!flexibleHours)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.flexibleTextWrap}>
+          <Text style={styles.flexibleTitle}>Flexible hours</Text>
+          <Text style={styles.flexibleDesc}>
+            Let clients know your listed times may vary from week to week.
+          </Text>
+        </View>
+        <View style={[styles.toggleCircle, styles.toggleOptionCheck, flexibleHours && styles.toggleCircleActive]}>
+          {flexibleHours ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+        </View>
+      </TouchableOpacity>
 
       <TimePickerModal
         visible={timePickerVisible}
@@ -363,6 +384,53 @@ function createStyles(theme: AppTheme) {
       fontFamily: theme.typography.fontFamily.regular,
       fontSize: theme.typography.sizes.caption,
       color: theme.colors.textSecondary,
+    },
+    flexibleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.md,
+      padding: theme.spacing.md,
+      backgroundColor: theme.colors.background,
+      borderRadius: theme.borderRadius.lg,
+      borderWidth: 1.5,
+      borderColor: theme.colors.border,
+    },
+    flexibleCardActive: {
+      borderColor: theme.colors.secondary,
+      backgroundColor: theme.colors.primaryLight,
+    },
+    flexibleTextWrap: {
+      flex: 1,
+      flexShrink: 1,
+      minWidth: 0,
+      paddingRight: theme.spacing.xs,
+    },
+    flexibleTitle: {
+      fontFamily: theme.typography.fontFamily.semiBold,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.textPrimary,
+      marginBottom: 2,
+    },
+    flexibleDesc: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.sizes.caption,
+      color: theme.colors.textSecondary,
+    },
+    toggleOptionCheck: {
+      flexShrink: 0,
+    },
+    toggleCircle: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      borderWidth: 2,
+      borderColor: theme.colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    toggleCircleActive: {
+      backgroundColor: theme.colors.secondary,
+      borderColor: theme.colors.secondary,
     },
     pickerOverlay: {
       flex: 1,

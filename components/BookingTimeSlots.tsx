@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { AppTheme } from '../constants/theme';
-import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
 
 type BookingTimeSlotsProps = {
@@ -26,7 +25,6 @@ export function BookingTimeSlots({
   emptyMessage = 'Please select a date to view availability.',
   availabilitySeed = 0,
 }: BookingTimeSlotsProps) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   return (

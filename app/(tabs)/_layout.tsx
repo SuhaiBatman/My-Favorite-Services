@@ -69,6 +69,7 @@ function resolveTabIndex(pathname: string, fallback = 0): number {
 export default function TabLayout() {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const { user, hasRole, role, session, roles, isLoading } = useAuth();
 
   const insets = useSafeAreaInsets();
   const pagerRef = useRef<PagerView>(null);
@@ -94,7 +95,6 @@ export default function TabLayout() {
     [bubbleX],
   );
 
-  const { user, hasRole, role } = useAuth();
   const [homeModal, setHomeModal] = useState(false);
   const [scheduleModal, setScheduleModal] = useState(false);
   const [messagesCompose, setMessagesCompose] = useState(false);
@@ -217,6 +217,12 @@ export default function TabLayout() {
   })();
 
   const bottomOffset = Math.max(insets.bottom, 24);
+  const hasAccountRole = Boolean(role) || roles.length > 0;
+  const canShowTabs = !isLoading && !(session && !hasAccountRole);
+
+  if (!canShowTabs) {
+    return <View style={styles.root} />;
+  }
 
   return (
     <View style={styles.root}>

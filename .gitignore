@@ -30,12 +30,22 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files (`.env.local` overrides `.env` for local Supabase)
+# local env files (copy from *.example templates)
 .env
+.env.local
+.env.production
 .env*.local
 
-# Android signing secrets
-credentials/
+# Supabase CLI link state (project ref, pooler URL — not for git)
+supabase/.temp/
+
+# Machine-local LAN IP for local Supabase (`npm run lan:sync` / postinstall)
+constants/localSupabaseHost.ts
+constants/supabaseEnv.ts
+
+# Android signing secrets (keep *.example templates)
+credentials/*
+!credentials/*.example
 
 # typescript
 *.tsbuildinfo

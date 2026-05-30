@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import {
@@ -6,6 +13,7 @@ import {
   normalizeRoles,
   primaryRoleFromRoles,
   rolesForPrimaryRole,
+  SELF_EMPLOYED_ROLES,
   type UserRole,
 } from '../lib/roles';
 
@@ -21,8 +29,9 @@ type ProfileData = {
   job_title?: string;
   timings?: string;
   work_days?: string;
-  role?: string;
-  roles?: string[];
+  flexible_hours?: boolean;
+  role?: UserRole | string;
+  roles?: UserRole[] | string[];
   bio?: string;
   services?: string;
   industry?: string;
@@ -42,8 +51,17 @@ type AuthContextType = {
   roles: UserRole[];
   hasRole: (role: UserRole) => boolean;
   isLoading: boolean;
-  setRole: (role: UserRole) => Promise<void>;
-  updateProfile: (data: ProfileData) => Promise<void>;
+  setRole: (role: UserRole, options?: { isSelfEmployed?: boolean }) => Promise<void>;
+  updateProfile: (
+    data: ProfileData,
+    options?: { profileTableOnly?: boolean }
+  ) => Promise<void>;
+  /** One profile write for onboarding finish — avoids duplicate auth/profile round-trips. */
+  completeOnboarding: (
+    data: ProfileData,
+    primaryRole: UserRole,
+    isSelfEmployed: boolean
+  ) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -55,15 +73,41 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   setRole: async () => {},
   updateProfile: async () => {},
+  completeOnboarding: async () => {},
 });
+
+const AUTH_METADATA_KEYS = [
+  'first_name',
+  'last_name',
+  'middle_initial',
+  'age',
+  'gender',
+  'phone',
+  'email',
+  'role',
+  'roles',
+  'is_self_employed',
+  'job_title',
+  'business_name',
+] as const;
+
+function slimAuthMetadata(payload: ProfileData): Record<string, unknown> {
+  const slim: Record<string, unknown> = {};
+  for (const key of AUTH_METADATA_KEYS) {
+    const value = payload[key as keyof ProfileData];
+    if (value !== undefined) slim[key] = value;
+  }
+  return slim;
+}
 
 export const useAuth = () => useContext(AuthContext);
 
 function applySessionUser(sessionUser: User | null) {
   const meta = sessionUser?.user_metadata ?? {};
-  const roles = normalizeRoles(meta.role, meta.roles);
+  const isSelfEmployed = Boolean(meta.is_self_employed);
+  const roles = normalizeRoles(meta.role, meta.roles, isSelfEmployed);
   const primary = primaryRoleFromRoles(roles);
-  return { roles, primary };
+  return { roles, primary, isSelfEmployed };
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -71,40 +115,81 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRoleState] = useState<UserRole | null>(null);
   const [roles, setRolesState] = useState<UserRole[]>([]);
+  const [isSelfEmployed, setIsSelfEmployed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const suppressHydrateUntilRef = useRef(0);
 
   const syncFromUser = (sessionUser: User | null) => {
-    const { roles: nextRoles, primary } = applySessionUser(sessionUser);
+    const { roles: nextRoles, primary, isSelfEmployed: selfEmployed } =
+      applySessionUser(sessionUser);
     setRolesState(nextRoles);
     setRoleState(primary);
+    setIsSelfEmployed(selfEmployed);
   };
 
-  const hydrateRolesFromProfile = async (sessionUser: User) => {
+  const syncFromProfileRow = (row: {
+    role: string | null;
+    roles: string[] | null;
+    is_self_employed: boolean | null;
+  }) => {
+    const selfEmployed = Boolean(row.is_self_employed);
+    const nextRoles = normalizeRoles(row.role, row.roles, selfEmployed);
+    setRolesState(nextRoles);
+    setRoleState(primaryRoleFromRoles(nextRoles));
+    setIsSelfEmployed(selfEmployed);
+  };
+
+  const hydrateRolesFromProfile = useCallback(async (sessionUser: User) => {
+    if (Date.now() < suppressHydrateUntilRef.current) {
+      return;
+    }
+
     const { data } = await supabase
       .from('profiles')
-      .select('role, roles')
+      .select('role, roles, is_self_employed')
       .eq('id', sessionUser.id)
       .maybeSingle();
 
-    if (!data) return;
+    if (!data) {
+      syncFromUser(sessionUser);
+      return;
+    }
 
-    const fromDb = normalizeRoles(data.role, data.roles);
+    // Profile is the source of truth — avoids clearing roles from stale JWT metadata
+    // during TOKEN_REFRESHED / USER_UPDATED events while Home is loading.
+    syncFromProfileRow(data);
+
+    const selfEmployed = Boolean(data.is_self_employed);
+    const fromDb = normalizeRoles(data.role, data.roles, selfEmployed);
     const fromMeta = applySessionUser(sessionUser).roles;
     const metaMissingUser =
       fromDb.includes('employee') &&
       fromDb.includes('user') &&
       !fromMeta.includes('user');
+    const metaMissingSelfEmployedRoles =
+      selfEmployed &&
+      SELF_EMPLOYED_ROLES.some(r => !fromMeta.includes(r));
 
     // Only backfill auth when metadata is empty or employee is missing the bundled
     // `user` role. Do not compare array lengths — that reverts intentional role switches
     // (e.g. business → employee) while the profile row is still stale.
     const metaEmpty = fromMeta.length === 0;
 
-    if (fromDb.length && (metaEmpty || metaMissingUser)) {
+    if (fromDb.length && (metaEmpty || metaMissingUser || metaMissingSelfEmployedRoles)) {
       const primary = primaryRoleFromRoles(fromDb);
       if (primary) {
+        if (metaMissingSelfEmployedRoles) {
+          await supabase
+            .from('profiles')
+            .update({ roles: fromDb, updated_at: new Date().toISOString() })
+            .eq('id', sessionUser.id);
+        }
         await supabase.auth.updateUser({
-          data: { role: primary, roles: fromDb },
+          data: {
+            role: primary,
+            roles: fromDb,
+            is_self_employed: selfEmployed,
+          },
         });
         const { data: refreshed } = await supabase.auth.getUser();
         if (refreshed.user) {
@@ -113,70 +198,170 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
-      syncFromUser(session?.user ?? null);
-      if (session?.user) await hydrateRolesFromProfile(session.user);
-      setIsLoading(false);
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
+      try {
+        if (sessionUser) {
+          await hydrateRolesFromProfile(sessionUser);
+        } else {
+          syncFromUser(null);
+        }
+      } finally {
+        setIsLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
-        setUser(session?.user ?? null);
-        syncFromUser(session?.user ?? null);
-        if (session?.user) await hydrateRolesFromProfile(session.user);
-        setIsLoading(false);
+        const sessionUser = session?.user ?? null;
+        setUser(sessionUser);
+        try {
+          if (sessionUser) {
+            await hydrateRolesFromProfile(sessionUser);
+          } else {
+            syncFromUser(null);
+          }
+        } finally {
+          setIsLoading(false);
+        }
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [hydrateRolesFromProfile]);
 
-  const setRole = async (newRole: UserRole) => {
-    if (!user) return;
+  const setRole = async (
+    newRole: UserRole,
+    options?: { isSelfEmployed?: boolean }
+  ) => {
+    if (!user) {
+      throw new Error('Not signed in');
+    }
 
-    const nextRoles = rolesForPrimaryRole(newRole);
+    const selfEmployed = options?.isSelfEmployed ?? isSelfEmployed;
+    const nextRoles = rolesForPrimaryRole(newRole, selfEmployed);
     const rolePayload = {
       role: newRole,
       roles: nextRoles,
+      ...(options?.isSelfEmployed !== undefined && {
+        is_self_employed: options.isSelfEmployed,
+      }),
       updated_at: new Date().toISOString(),
     };
 
-    const { error: profileError } = await supabase
+    const { data: profileRow, error: profileError } = await supabase
       .from('profiles')
-      .update(rolePayload)
-      .eq('id', user.id);
+      .upsert({ id: user.id, ...rolePayload })
+      .select('role, roles, is_self_employed')
+      .single();
 
     if (profileError) {
       console.error('Error updating profile roles:', profileError);
-      return;
+      throw profileError;
+    }
+
+    if (profileRow) {
+      syncFromProfileRow(profileRow);
     }
 
     const { data, error } = await supabase.auth.updateUser({
-      data: { role: newRole, roles: nextRoles },
+      data: {
+        role: newRole,
+        roles: nextRoles,
+        ...(options?.isSelfEmployed !== undefined && {
+          is_self_employed: options.isSelfEmployed,
+        }),
+      },
     });
 
-    if (!error && data.user) {
-      setUser(data.user);
-      syncFromUser(data.user);
-    } else {
+    if (error) {
       console.error('Error updating role:', error);
+      throw error;
+    }
+
+    if (data.user) {
+      setUser(data.user);
     }
   };
 
-  const updateProfile = async (profileData: ProfileData) => {
-    if (!user) return;
+  const updateProfile = async (
+    profileData: ProfileData,
+    options?: { profileTableOnly?: boolean }
+  ) => {
+    if (!user) {
+      throw new Error('Not signed in');
+    }
 
-    // 1. Update Auth Metadata (for easy access in session)
+    let roleFields: Pick<ProfileData, 'role' | 'roles'> = {};
+    if (profileData.role && profileData.roles?.length) {
+      roleFields = { role: profileData.role, roles: profileData.roles };
+    } else if (profileData.is_self_employed !== undefined) {
+      const selfEmployed = Boolean(profileData.is_self_employed);
+      const primary =
+        (profileData.role as UserRole | undefined) ??
+        role ??
+        primaryRoleFromRoles(roles);
+      if (primary) {
+        roleFields = {
+          role: primary,
+          roles: rolesForPrimaryRole(primary, selfEmployed),
+        };
+      }
+    }
+
+    const payload = { ...profileData, ...roleFields };
+
+    const { data: profileRow, error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        ...payload,
+        updated_at: new Date().toISOString(),
+      })
+      .select('role, roles, is_self_employed')
+      .single();
+
+    if (profileError) {
+      console.error('Error updating public profile:', profileError);
+      throw profileError;
+    }
+
+    if (profileRow) {
+      syncFromProfileRow(profileRow);
+    } else if (roleFields.role && roleFields.roles) {
+      syncFromProfileRow({
+        role: roleFields.role,
+        roles: roleFields.roles,
+        is_self_employed: profileData.is_self_employed ?? null,
+      });
+    }
+
+    if (!options?.profileTableOnly) {
+      const { data, error: authError } = await supabase.auth.updateUser({
+        data: slimAuthMetadata(payload),
+      });
+
+      if (authError) {
+        console.error('Error updating auth metadata:', authError);
+        throw authError;
+      }
+
+      if (data.user) {
+        setUser(data.user);
+      }
+      return;
+    }
+
     const { data, error: authError } = await supabase.auth.updateUser({
-      data: { ...profileData }
+      data: slimAuthMetadata(payload),
     });
 
     if (authError) {
@@ -184,24 +369,73 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       throw authError;
     }
 
-    // 2. Update Public Profiles Table (for querying and relational data)
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        ...profileData,
-        updated_at: new Date().toISOString(),
-      });
-
-    if (profileError) {
-      console.error('Error updating public profile:', profileError);
-      // We don't necessarily want to throw here if auth metadata succeeded, 
-      // but it's good to know.
-    }
-
     if (data.user) {
       setUser(data.user);
     }
+  };
+
+  const completeOnboarding = async (
+    profileData: ProfileData,
+    primaryRole: UserRole,
+    isSelfEmployed: boolean
+  ) => {
+    if (!user) {
+      throw new Error('Not signed in');
+    }
+
+    const nextRoles = rolesForPrimaryRole(primaryRole, isSelfEmployed);
+    const payload = {
+      ...profileData,
+      role: primaryRole,
+      roles: nextRoles,
+      is_self_employed: isSelfEmployed,
+    };
+    const authMetadata = slimAuthMetadata(payload);
+
+    suppressHydrateUntilRef.current = Date.now() + 4_000;
+
+    const { data: profileRow, error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        ...payload,
+        updated_at: new Date().toISOString(),
+      })
+      .select('role, roles, is_self_employed')
+      .single();
+
+    if (profileError) {
+      suppressHydrateUntilRef.current = 0;
+      console.error('completeOnboarding profile:', profileError);
+      throw profileError;
+    }
+
+    if (profileRow) {
+      syncFromProfileRow(profileRow);
+    }
+
+    setUser({
+      ...user,
+      user_metadata: {
+        ...user.user_metadata,
+        ...authMetadata,
+      },
+    });
+
+    void supabase.auth
+      .updateUser({ data: authMetadata })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('completeOnboarding auth sync:', error);
+          return;
+        }
+        if (data.user) {
+          setUser(data.user);
+        }
+      })
+      .finally(() => {
+        suppressHydrateUntilRef.current = 0;
+      });
   };
 
   return (
@@ -215,6 +449,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         isLoading,
         setRole,
         updateProfile,
+        completeOnboarding,
       }}
     >
       {children}

@@ -7,5 +7,5 @@ export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   factory: (theme: AppTheme) => T
 ): T {
   const { theme } = useAppTheme();
-  return useMemo(() => StyleSheet.create(factory(theme)), [theme]);
+  return useMemo(() => StyleSheet.create(factory(theme)), [theme, factory]);
 }

@@ -12,21 +12,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import type { AppTheme } from '../../../constants/theme';
 import { useAppTheme } from '../../../contexts/ThemeContext';
 import { useThemedStyles } from '../../../hooks/use-themed-styles';
 import { Card } from '../../Card';
 import { ProviderAvatar } from '../../ProviderAvatar';
 import { useAuth } from '../../../contexts/AuthContext';
-import { listUserUpcomingAppointments, type Appointment } from '../../../lib/appointments';
-import { listFavorites, type FavoriteProvider } from '../../../lib/favorites';
+import type { Appointment } from '../../../lib/appointments';
+import type { FavoriteProvider } from '../../../lib/favorites';
+import { loadUserHomeData } from '../../../lib/homeLoad';
 import { NewMessageSheet } from '../../NewMessageSheet';
 import {
   formatAppointmentTime,
   isAppointmentOnLocalDay,
   profileDisplayName,
 } from '../../../lib/format';
+import { peekHomePrefetch } from '../../../lib/homePrefetch';
 
 const HOME_UPCOMING_PREVIEW_LIMIT = 3;
 interface UserHomeScreenProps {
@@ -41,11 +42,12 @@ export default function UserHomeScreen({
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
-  const { user } = useAuth();
+  const { user, session } = useAuth();
+  const userId = user?.id ?? session?.user?.id ?? null;
   const router = useRouter();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [favorites, setFavorites] = useState<FavoriteProvider[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [providerSearchVisible, setProviderSearchVisible] = useState(false);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
@@ -56,38 +58,46 @@ export default function UserHomeScreen({
     }
   }, [externalModalVisible, onExternalModalClose]);
 
-  const load = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const [appts, favs] = await Promise.all([
-        listUserUpcomingAppointments(user.id),
-        listFavorites(user.id),
-      ]);
-      setAppointments(appts);
-      setFavorites(favs);
-    } catch (e) {
-      console.error('UserHomeScreen load:', e);
-    }
-  }, [user?.id]);
+  const load = useCallback(async (id: string) => {
+    const data = await loadUserHomeData(id);
+    setAppointments(data.appointments);
+    setFavorites(data.favorites);
+  }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      (async () => {
-        setLoading(true);
-        await load();
-        if (active) setLoading(false);
-      })();
-      return () => {
-        active = false;
-      };
-    }, [load])
-  );
+  useEffect(() => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+
+    const cached = peekHomePrefetch(userId);
+    if (cached?.variant === 'user') {
+      setAppointments(cached.userAppointments);
+      setFavorites(cached.favorites);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    void load(userId).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, userId]);
 
   const onRefresh = async () => {
+    if (!userId) return;
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      await load(userId);
+    } catch (e) {
+      console.error('UserHomeScreen refresh:', e);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const openProvider = (providerId: string) => {

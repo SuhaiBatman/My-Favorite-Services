@@ -21,6 +21,7 @@ export type ProviderProfilePayload = {
   roles: string[] | null;
   services: string[] | null;
   availability: ProviderAvailabilitySlot[];
+  flexible_hours: boolean;
   is_favorite: boolean;
 };
 

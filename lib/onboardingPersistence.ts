@@ -1,4 +1,106 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+
+export type OnboardingRole = 'user' | 'employee' | 'business';
+export type OnboardingStep =
+  | 'role'
+  | 'profile'
+  | 'work'
+  | 'business'
+  | 'schedule'
+  | 'interests';
+
+export type OnboardingFormDraft = {
+  first_name: string;
+  last_name: string;
+  middle_initial: string;
+  age: string;
+  gender: string;
+  phone: string;
+  email: string;
+  is_self_employed: boolean;
+  job_title: string;
+  services: string[];
+  bio: string;
+  business_name: string;
+  industry: string;
+  /** User-defined industries entered via "Other" */
+  custom_industries: string[];
+  business_description: string;
+  website: string;
+  location: string;
+  selected_days: string[];
+  day_timings: Record<string, { start: string; end: string }>;
+  flexible_hours: boolean;
+  interests: string[];
+  /** User-defined interests entered via "Other" on the interests step */
+  custom_interests: string[];
+};
+
+export type OnboardingProgress = {
+  step: OnboardingStep;
+  selectedRole: OnboardingRole | null;
+  formData: OnboardingFormDraft;
+};
+
+const STEPS_FOR_ROLE: Record<OnboardingRole, OnboardingStep[]> = {
+  user: ['role', 'profile', 'interests'],
+  employee: ['role', 'profile', 'work', 'schedule', 'interests'],
+  business: ['role', 'profile', 'business'],
+};
+
+function progressKey(userId: string) {
+  return `@onboarding/progress:${userId}`;
+}
+
+export function normalizeOnboardingStep(
+  role: OnboardingRole | null,
+  step: OnboardingStep
+): OnboardingStep {
+  if (!role) return 'role';
+  const steps = STEPS_FOR_ROLE[role];
+  return steps.includes(step) ? step : steps[1] ?? 'profile';
+}
+
+export async function loadOnboardingProgress(
+  userId: string
+): Promise<OnboardingProgress | null> {
+  try {
+    const raw = await AsyncStorage.getItem(progressKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as OnboardingProgress;
+    if (!parsed?.step || !parsed.formData) return null;
+    return {
+      step: normalizeOnboardingStep(parsed.selectedRole, parsed.step),
+      selectedRole: parsed.selectedRole ?? null,
+      formData: {
+        ...parsed.formData,
+        flexible_hours: Boolean(parsed.formData.flexible_hours),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveOnboardingProgress(
+  userId: string,
+  progress: OnboardingProgress
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(progressKey(userId), JSON.stringify(progress));
+  } catch {
+    // Best-effort local draft
+  }
+}
+
+export async function clearOnboardingProgress(userId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(progressKey(userId));
+  } catch {
+    // Best-effort cleanup
+  }
+}
 
 type DayTiming = { start: string; end: string };
 

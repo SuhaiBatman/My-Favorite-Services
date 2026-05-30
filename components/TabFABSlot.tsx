@@ -6,7 +6,6 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Animated, StyleSheet, Text, TouchableOpacity } from "react-native";
 import type { AppTheme } from "../constants/theme";
-import { useAppTheme } from "../contexts/ThemeContext";
 import { useThemedStyles } from "../hooks/use-themed-styles";
 
 interface TabFABSlotProps {
@@ -16,7 +15,6 @@ interface TabFABSlotProps {
 }
 
 export function TabFABSlot({ icon, label, onPress }: TabFABSlotProps) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
   return (
