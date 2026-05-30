@@ -2,11 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import * as WebBrowser from 'expo-web-browser';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { makeRedirectUri } from 'expo-auth-session';
-
-WebBrowser.maybeCompleteAuthSession();
+import { getAuthRedirectUri } from '../../lib/authCallback';
+import { GoogleSignIn } from '../../components/GoogleSignIn';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -47,6 +45,9 @@ export default function LoginScreen() {
     const { data, error } = await supabase.auth.signUp({
       email: email,
       password: password,
+      options: {
+        emailRedirectTo: getAuthRedirectUri(),
+      },
     });
 
     if (error) {
@@ -69,24 +70,51 @@ export default function LoginScreen() {
         [{ text: 'OK', onPress: () => setIsSignUp(false) }]
       );
     } else {
-      // Email confirmation required, switch to OTP view
       setPendingVerification(true);
+      Alert.alert(
+        'Verify your email',
+        'We sent a 6-digit code and a confirmation link. Enter the code below, or tap the link in the email to open the app.'
+      );
     }
     setLoading(false);
   }
 
   async function verifyOtp() {
     setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({
+    const trimmedOtp = otp.trim();
+    let { error } = await supabase.auth.verifyOtp({
       email,
-      token: otp,
+      token: trimmedOtp,
       type: 'signup',
     });
 
     if (error) {
+      const retry = await supabase.auth.verifyOtp({
+        email,
+        token: trimmedOtp,
+        type: 'email',
+      });
+      error = retry.error;
+    }
+
+    if (error) {
       Alert.alert('Error', error.message);
     }
-    // If successful, the AuthContext listener will detect the new session and redirect
+    setLoading(false);
+  }
+
+  async function resendVerification() {
+    setLoading(true);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: getAuthRedirectUri() },
+    });
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      Alert.alert('Sent', 'A new verification code and link were sent to your email.');
+    }
     setLoading(false);
   }
 
@@ -96,37 +124,13 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getAuthRedirectUri(),
+    });
     if (error) {
       Alert.alert('Error', error.message);
     } else {
       Alert.alert('Success', 'Check your email for the password reset link.');
-    }
-    setLoading(false);
-  }
-
-  async function signInWithGoogle() {
-    setLoading(true);
-    const redirectUrl = makeRedirectUri({
-      path: '/(tabs)',
-    });
-    
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-      },
-    });
-
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else if (data?.url) {
-      const res = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (res.type === 'success' && res.url) {
-        // Parse the session out of the url
-        const { error: sessionError } = await supabase.auth.getSessionFromUrl(res.url);
-        if (sessionError) Alert.alert('Error', sessionError.message);
-      }
     }
     setLoading(false);
   }
@@ -168,12 +172,15 @@ export default function LoginScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
         <View style={styles.content}>
           <Text style={styles.title}>Check your email</Text>
-          <Text style={styles.subtitle}>We sent a 6-digit verification code to {email}</Text>
+          <Text style={styles.subtitle}>
+            We sent a 6-digit code and a confirmation link to {email}. Enter the code here, or tap
+            the link in your email to open the app.
+          </Text>
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Verification Code</Text>
             <TextInput
-              style={[styles.input, { textAlign: 'center', fontSize: 24, tracking: 4 }]}
+              style={[styles.input, { textAlign: 'center', fontSize: 24, letterSpacing: 4 }]}
               onChangeText={setOtp}
               value={otp}
               placeholder="000000"
@@ -184,6 +191,14 @@ export default function LoginScreen() {
 
           <TouchableOpacity style={styles.primaryButton} onPress={verifyOtp} disabled={loading || otp.length < 6}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Verify Account</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={resendVerification}
+            disabled={loading}
+          >
+            <Text style={styles.secondaryButtonText}>Resend verification email</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.secondaryButton} onPress={() => setPendingVerification(false)}>
@@ -208,7 +223,7 @@ export default function LoginScreen() {
 
           {/* Social Sign In Buttons */}
           <View style={styles.socialContainer}>
-            {Platform.OS === 'ios' ? (
+            {Platform.OS === 'ios' && (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
                 buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
@@ -216,12 +231,8 @@ export default function LoginScreen() {
                 style={styles.appleButton}
                 onPress={signInWithApple}
               />
-            ) : (
-              <TouchableOpacity style={styles.googleButton} onPress={signInWithGoogle} disabled={loading}>
-                <Ionicons name="logo-google" size={20} color="#111827" style={styles.googleIcon} />
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
-              </TouchableOpacity>
             )}
+            <GoogleSignIn disabled={loading} />
           </View>
 
           <View style={styles.dividerContainer}>
@@ -330,24 +341,6 @@ const styles = StyleSheet.create({
   appleButton: {
     width: '100%',
     height: 52,
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 52,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  googleIcon: {
-    marginRight: 8,
-  },
-  googleButtonText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    color: '#111827',
   },
   dividerContainer: {
     flexDirection: 'row',

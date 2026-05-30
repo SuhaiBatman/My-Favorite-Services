@@ -14,6 +14,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
 import { DEV_USER_IDS } from '../constants/dev';
+import { configureGoogleSignIn } from '../lib/googleSignIn';
+import { useAuthDeepLinkListener } from '../hooks/use-auth-deep-link';
 import { useProfileDeepLinkListener } from '../hooks/use-profile-link';
 
 SplashScreen.preventAutoHideAsync();
@@ -28,16 +30,22 @@ function InitialLayout() {
   const segments = useSegments();
   const router = useRouter();
 
+  useAuthDeepLinkListener();
   useProfileDeepLinkListener();
+
+  useEffect(() => {
+    configureGoogleSignIn();
+  }, []);
 
   useEffect(() => {
     if (isLoading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const isPublicProfile = segments[0] === 'profile' || segments[0] === 'p';
+    const isAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
 
     if (!session) {
-      if (!inAuthGroup && !isPublicProfile) {
+      if (!inAuthGroup && !isPublicProfile && !isAuthCallback) {
         router.replace('/(auth)/login');
       }
     } else {
@@ -83,6 +91,7 @@ function InitialLayout() {
     <NavThemeProvider value={navigationTheme}>
       <Stack>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="account" options={{ headerShown: false }} />
         <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
