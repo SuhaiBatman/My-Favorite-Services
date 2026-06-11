@@ -11,6 +11,7 @@
     "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.suhaibatman.myfavoriteservices",
+      "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "Allow My-Favorite-Services to use FaceID for secure access.",
@@ -51,6 +52,7 @@
         }
       ],
       "expo-font",
+      "expo-apple-authentication",
       "expo-web-browser",
       [
         "expo-camera",

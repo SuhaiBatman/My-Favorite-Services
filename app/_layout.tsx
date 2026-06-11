@@ -13,6 +13,7 @@ import {
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { FavoritesProvider } from '../contexts/FavoritesContext';
 import { OnboardingCelebrationProvider, useOnboardingCelebration } from '../contexts/OnboardingCelebrationContext';
 import { OnboardingCompleteOverlay } from '../components/OnboardingCompleteOverlay';
 import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
@@ -205,9 +206,11 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <OnboardingCelebrationProvider>
-          <InitialLayout fontsReady={fontsReady} />
-        </OnboardingCelebrationProvider>
+        <FavoritesProvider>
+          <OnboardingCelebrationProvider>
+            <InitialLayout fontsReady={fontsReady} />
+          </OnboardingCelebrationProvider>
+        </FavoritesProvider>
       </AuthProvider>
     </ThemeProvider>
   );

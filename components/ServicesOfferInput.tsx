@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Keyboard,
+  Modal,
+  Alert,
+  Pressable,
   type StyleProp,
   type TextStyle,
 } from 'react-native';
@@ -15,10 +18,17 @@ import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
 import { searchServiceSuggestions, type ServiceSuggestion } from '../lib/serviceSuggestions';
+import {
+  formatServiceDuration,
+  formatServicePrice,
+  parseDollarInput,
+  parseDurationInput,
+  type ServiceOffer,
+} from '../lib/serviceOffer';
 
 type ServicesOfferInputProps = {
-  services: string[];
-  onChangeServices: (services: string[]) => void;
+  services: ServiceOffer[];
+  onChangeServices: (services: ServiceOffer[]) => void;
   inputStyle?: StyleProp<TextStyle>;
   placeholder?: string;
 };
@@ -40,12 +50,15 @@ export function ServicesOfferInput({
   const [suggestions, setSuggestions] = useState<ServiceSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [pendingName, setPendingName] = useState<string | null>(null);
+  const [durationInput, setDurationInput] = useState('');
+  const [priceInput, setPriceInput] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const addedKeys = useRef(new Set(services.map(normalizeKey)));
+  const addedKeys = useRef(new Set(services.map((service) => normalizeKey(service.name))));
   useEffect(() => {
-    addedKeys.current = new Set(services.map(normalizeKey));
+    addedKeys.current = new Set(services.map((service) => normalizeKey(service.name)));
   }, [services]);
 
   useEffect(() => {
@@ -65,6 +78,54 @@ export function ServicesOfferInput({
     []
   );
 
+  const resetPendingService = () => {
+    setPendingName(null);
+    setDurationInput('');
+    setPriceInput('');
+  };
+
+  const beginAddService = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || addedKeys.current.has(normalizeKey(trimmed))) return;
+    setPendingName(trimmed);
+    setDurationInput('');
+    setPriceInput('');
+    dismissSuggestions();
+  };
+
+  const confirmAddService = () => {
+    if (!pendingName) return;
+
+    const durationMinutes = parseDurationInput(durationInput);
+    const priceCents = parseDollarInput(priceInput);
+
+    if (durationMinutes === null) {
+      Alert.alert('Time estimate required', 'Enter how long this service takes in minutes.');
+      return;
+    }
+    if (priceCents === null) {
+      Alert.alert('Cost required', 'Enter the price for this service.');
+      return;
+    }
+
+    onChangeServices([
+      ...services,
+      { name: pendingName, durationMinutes, priceCents },
+    ]);
+    setQuery('');
+    setSuggestions([]);
+    resetPendingService();
+    Keyboard.dismiss();
+  };
+
+  const handleChangeText = (text: string) => {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void runSearch(text);
+    }, 250);
+  };
+
   const runSearch = useCallback(
     async (text: string) => {
       setLoading(true);
@@ -77,23 +138,6 @@ export function ServicesOfferInput({
     },
     [filterSuggestions]
   );
-
-  const addServiceName = (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed || addedKeys.current.has(normalizeKey(trimmed))) return;
-    onChangeServices([...services, trimmed]);
-    setQuery('');
-    setSuggestions([]);
-    dismissSuggestions();
-  };
-
-  const handleChangeText = (text: string) => {
-    setQuery(text);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      void runSearch(text);
-    }, 250);
-  };
 
   const handleFocus = () => {
     if (blurDismissRef.current) {
@@ -120,18 +164,19 @@ export function ServicesOfferInput({
   };
 
   const handleAddPress = () => {
-    addServiceName(query);
+    beginAddService(query);
     Keyboard.dismiss();
   };
 
   const handleSelectSuggestion = (item: ServiceSuggestion) => {
     cancelBlurDismiss();
-    addServiceName(item.name);
+    beginAddService(item.name);
+    setQuery('');
     Keyboard.dismiss();
   };
 
-  const removeService = (service: string) => {
-    onChangeServices(services.filter((s) => s !== service));
+  const removeService = (service: ServiceOffer) => {
+    onChangeServices(services.filter((entry) => entry.name !== service.name));
   };
 
   const showSuggestionList = isFocused && suggestions.length > 0;
@@ -190,8 +235,17 @@ export function ServicesOfferInput({
       {services.length > 0 ? (
         <View style={styles.tagChipsRow}>
           {services.map((service) => (
-            <View key={service} style={styles.tagChip}>
-              <Text style={styles.tagChipText}>{service}</Text>
+            <View key={service.name} style={styles.tagChip}>
+              <View style={styles.tagChipContent}>
+                <Text style={styles.tagChipText}>{service.name}</Text>
+                {service.durationMinutes > 0 || service.priceCents > 0 ? (
+                  <Text style={styles.tagChipMeta}>
+                    {[formatServiceDuration(service.durationMinutes), formatServicePrice(service.priceCents)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
               <TouchableOpacity
                 onPress={() => removeService(service)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -202,6 +256,54 @@ export function ServicesOfferInput({
           ))}
         </View>
       ) : null}
+
+      <Modal
+        visible={pendingName !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={resetPendingService}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={resetPendingService}>
+          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.modalTitle}>Service details</Text>
+            <Text style={styles.modalSubtitle}>
+              Add a time estimate and cost for {pendingName ?? 'this service'}.
+            </Text>
+
+            <Text style={styles.modalLabel}>Time estimate (minutes)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 45"
+              placeholderTextColor="#94A3B8"
+              value={durationInput}
+              onChangeText={setDurationInput}
+              keyboardType="number-pad"
+              returnKeyType="next"
+            />
+
+            <Text style={styles.modalLabel}>Cost</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 65"
+              placeholderTextColor="#94A3B8"
+              value={priceInput}
+              onChangeText={setPriceInput}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              onSubmitEditing={confirmAddService}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalSecondaryBtn} onPress={resetPendingService}>
+                <Text style={styles.modalSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalPrimaryBtn} onPress={confirmAddService}>
+                <Text style={styles.modalPrimaryText}>Add service</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -288,11 +390,90 @@ function createStyles(theme: AppTheme) {
       borderRadius: theme.borderRadius.full,
       borderWidth: 1,
       borderColor: theme.colors.border,
+      maxWidth: '100%',
+    },
+    tagChipContent: {
+      flexShrink: 1,
     },
     tagChipText: {
       fontFamily: theme.typography.fontFamily.medium,
       fontSize: 14,
       color: theme.colors.secondary,
+    },
+    tagChipMeta: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: 12,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(15, 23, 42, 0.45)',
+      justifyContent: 'center',
+      padding: theme.spacing.lg,
+    },
+    modalCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.borderRadius.lg,
+      padding: theme.spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    modalTitle: {
+      fontFamily: theme.typography.fontFamily.bold,
+      fontSize: theme.typography.sizes.title,
+      color: theme.colors.textPrimary,
+      marginBottom: theme.spacing.xs,
+    },
+    modalSubtitle: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.textSecondary,
+      marginBottom: theme.spacing.md,
+    },
+    modalLabel: {
+      fontFamily: theme.typography.fontFamily.medium,
+      fontSize: theme.typography.sizes.caption,
+      color: theme.colors.textSecondary,
+      marginBottom: 6,
+    },
+    modalInput: {
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.sizes.body,
+      color: theme.colors.textPrimary,
+      backgroundColor: theme.colors.background,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.borderRadius.md,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      marginBottom: theme.spacing.md,
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: theme.spacing.sm,
+      marginTop: theme.spacing.xs,
+    },
+    modalSecondaryBtn: {
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+    },
+    modalSecondaryText: {
+      fontFamily: theme.typography.fontFamily.medium,
+      fontSize: theme.typography.sizes.body,
+      color: theme.colors.textSecondary,
+    },
+    modalPrimaryBtn: {
+      backgroundColor: theme.colors.secondary,
+      borderRadius: theme.borderRadius.md,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 12,
+    },
+    modalPrimaryText: {
+      fontFamily: theme.typography.fontFamily.bold,
+      fontSize: theme.typography.sizes.body,
+      color: '#FFFFFF',
     },
   });
 }

@@ -55,7 +55,7 @@ export function BookingCalendar({
   });
 
   const availableDaySet = useMemo(() => {
-    if (!availableDaysOfWeek?.length) return null;
+    if (availableDaysOfWeek == null) return null;
     return new Set(availableDaysOfWeek);
   }, [availableDaysOfWeek]);
 

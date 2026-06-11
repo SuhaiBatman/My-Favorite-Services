@@ -99,6 +99,24 @@ export async function listProviderUpcomingAppointments(
   return (data ?? []).map((row) => normalizeAppointment(row as unknown as Appointment));
 }
 
+export async function listProviderAppointmentsBetween(
+  providerId: string,
+  rangeStart: Date,
+  rangeEnd: Date
+): Promise<Appointment[]> {
+  const { data, error } = await supabase
+    .from('appointments')
+    .select(PROVIDER_APPOINTMENT_SELECT)
+    .eq('provider_id', providerId)
+    .lt('starts_at', rangeEnd.toISOString())
+    .gt('ends_at', rangeStart.toISOString())
+    .neq('status', 'cancelled')
+    .order('starts_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((row) => normalizeAppointment(row as unknown as Appointment));
+}
+
 export async function listAppointmentsInRange(
   participantId: string,
   rangeStart: Date,

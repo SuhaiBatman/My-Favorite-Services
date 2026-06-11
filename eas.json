@@ -14,13 +14,15 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false"
+        "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false"
+        "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co"
       }
     }
   },

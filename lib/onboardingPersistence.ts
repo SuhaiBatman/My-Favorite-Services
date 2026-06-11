@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+import {
+  normalizeServiceOffers,
+  type ServiceOffer,
+} from './serviceOffer';
 
 export type OnboardingRole = 'user' | 'employee' | 'business';
 export type OnboardingStep =
@@ -20,7 +24,7 @@ export type OnboardingFormDraft = {
   email: string;
   is_self_employed: boolean;
   job_title: string;
-  services: string[];
+  services: ServiceOffer[];
   bio: string;
   business_name: string;
   industry: string;
@@ -76,6 +80,7 @@ export async function loadOnboardingProgress(
       formData: {
         ...parsed.formData,
         flexible_hours: Boolean(parsed.formData.flexible_hours),
+        services: normalizeServiceOffers(parsed.formData.services),
       },
     };
   } catch {
@@ -129,18 +134,19 @@ function toMinutes(time12: string): number {
 
 export async function persistEmployeeStructuredData(
   employeeId: string,
-  services: string[],
+  services: ServiceOffer[],
   selectedDays: string[],
   dayTimings: Record<string, DayTiming>
 ) {
   const normalizedServices = services
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((name) => ({
+    .map((service) => ({
       employee_id: employeeId,
-      name,
-      name_normalized: name.toLowerCase(),
-    }));
+      name: service.name.trim(),
+      name_normalized: service.name.trim().toLowerCase(),
+      duration_minutes: service.durationMinutes,
+      price_cents: service.priceCents,
+    }))
+    .filter((service) => service.name);
 
   const availability = selectedDays
     .map((day) => {

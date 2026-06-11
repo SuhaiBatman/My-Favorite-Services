@@ -14,19 +14,27 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-inset';
 import { Button } from './Button';
 import { ProviderAvatar } from './ProviderAvatar';
 import { useAuth } from '../contexts/AuthContext';
-import { createAppointment } from '../lib/appointments';
-import { listEmployeeAvailability, listEmployeeServices } from '../lib/employeeServices';
+import {
+  createAppointment,
+  listProviderAppointmentsBetween,
+  type Appointment,
+} from '../lib/appointments';
+import { listEmployeeAvailability, listEmployeeServices, type EmployeeService } from '../lib/employeeServices';
+import { formatServiceDuration, formatServicePrice } from '../lib/serviceOffer';
 import { BookingCalendar } from './BookingCalendar';
 import { ServiceBookingFields } from './ServiceBookingFields';
 import { listMessageableProviders, type ProviderListItem } from '../lib/messaging';
 import { profileDisplayName } from '../lib/format';
+import type { ProviderAvailabilitySlot } from '../lib/profileSchedule';
 import {
   buildAppointmentLocation,
   getFieldsForTemplate,
   getInputFields,
+  getTimeFields,
   inferTemplateFromServiceName,
   isBookingComplete,
   isBrickAndMortarTemplate,
@@ -35,39 +43,7 @@ import {
   type BookingFieldKey,
 } from '../lib/serviceBookingFields';
 
-const TIME_SLOTS = ['09:00 AM', '10:00 AM', '11:00 AM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM'];
-
-const DURATION_BY_SERVICE: Record<string, number> = {
-  'initial consultation': 30,
-  'follow-up visit': 15,
-  'acne treatment': 45,
-  'the signature cut': 45,
-  'beard trim': 20,
-  'hot towel shave': 30,
-  'deep tissue massage': 60,
-  'relaxation massage': 45,
-  'sports recovery': 60,
-  'strength & conditioning': 50,
-  'hiit session': 45,
-  'mobility assessment': 30,
-  'meal plan review': 45,
-  'initial nutrition consult': 60,
-  'follow-up check-in': 30,
-  'full color & toner': 90,
-  'cut & style': 45,
-  'root touch-up': 60,
-  'injury assessment': 30,
-  'performance screening': 45,
-  'hydrafacial treatment': 75,
-  'chemical peel': 60,
-  'custom facial': 50,
-  'standard ride': 60,
-  'airport transfer': 75,
-  'hourly charter': 60,
-  'standard home clean': 180,
-  'deep clean': 300,
-  'move-out clean': 240,
-};
+const SLOT_INTERVAL_MINUTES = 30;
 
 function parseTime12ToMinutes(time12: string): number {
   const [time, meridiemRaw] = time12.split(' ');
@@ -87,9 +63,65 @@ function buildStartsAt(date: Date, time12: string): Date {
   return d;
 }
 
-function providerSubtitle(p: ProviderListItem): string {
+function startOfLocalDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfLocalDay(date: Date): Date {
+  const d = startOfLocalDay(date);
+  d.setDate(d.getDate() + 1);
+  return d;
+}
+
+function roundUpToInterval(minutes: number, interval: number): number {
+  return Math.ceil(minutes / interval) * interval;
+}
+
+function minutesToTime12(minutes: number): string {
+  const hour24 = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const ampm = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
+}
+
+function rangesOverlap(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
+  return startA < endB && endA > startB;
+}
+
+function hasAppointmentConflict(
+  startsAt: Date,
+  endsAt: Date,
+  appointments: Appointment[]
+): boolean {
+  return appointments.some((appointment) =>
+    rangesOverlap(
+      startsAt,
+      endsAt,
+      new Date(appointment.starts_at),
+      new Date(appointment.ends_at)
+    )
+  );
+}
+
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object' || !('code' in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
+function providerSubtitle(
+  p: Pick<ProviderListItem, 'job_title' | 'business_name'>
+): string {
   return p.job_title || p.business_name || 'Service Provider';
 }
+
+type BookingProviderSummary = Pick<
+  ProviderListItem,
+  'id' | 'first_name' | 'last_name' | 'job_title' | 'business_name' | 'location'
+>;
 
 function providerSearchText(p: ProviderListItem): string {
   return [
@@ -109,19 +141,24 @@ type UserBookAppointmentModalProps = {
   visible: boolean;
   onClose: () => void;
   onBooked: () => void;
+  initialProviderId?: string | null;
+  initialProvider?: BookingProviderSummary | null;
 };
 
 export function UserBookAppointmentModal({
   visible,
   onClose,
   onBooked,
+  initialProviderId = null,
+  initialProvider = null,
 }: UserBookAppointmentModalProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
 
   const { user } = useAuth();
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
-  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
+  const [services, setServices] = useState<EmployeeService[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [loadingServices, setLoadingServices] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -133,7 +170,11 @@ export function UserBookAppointmentModal({
   const [bookingDetails, setBookingDetails] = useState<BookingDetails>({});
   const [notes, setNotes] = useState('');
   const [providerSearch, setProviderSearch] = useState('');
-  const [availableDaysOfWeek, setAvailableDaysOfWeek] = useState<number[]>([]);
+  const [availabilitySlots, setAvailabilitySlots] = useState<ProviderAvailabilitySlot[]>([]);
+  const [bookedAppointments, setBookedAppointments] = useState<Appointment[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [appointmentCheckError, setAppointmentCheckError] = useState<string | null>(null);
 
   const providerSelected = providerId !== null;
 
@@ -146,8 +187,24 @@ export function UserBookAppointmentModal({
     [bookingTemplate]
   );
   const addressInputFields = useMemo(() => getInputFields(bookingFields), [bookingFields]);
+  const additionalTimeFields = useMemo(
+    () =>
+      getTimeFields(bookingFields).filter((field) =>
+        bookingTemplate === 'ride'
+          ? field.key !== 'pickupTime'
+          : field.key !== 'startTime'
+      ),
+    [bookingFields, bookingTemplate]
+  );
   const showProviderLocation = isBrickAndMortarTemplate(bookingTemplate);
   const showAddressFields = needsUserProvidedAddresses(bookingTemplate);
+  const selectedService = services.find((service) => service.name === serviceName);
+  const durationMins = selectedService?.durationMinutes ?? 45;
+
+  const availableDaysOfWeek = useMemo(
+    () => [...new Set(availabilitySlots.map((slot) => slot.day_of_week))],
+    [availabilitySlots]
+  );
 
   const filteredProviders = useMemo(() => {
     const q = providerSearch.trim().toLowerCase();
@@ -157,6 +214,7 @@ export function UserBookAppointmentModal({
 
   useEffect(() => {
     if (!visible) return;
+    setProviderId(initialProviderId ?? null);
     let cancelled = false;
     (async () => {
       setLoadingProviders(true);
@@ -170,7 +228,7 @@ export function UserBookAppointmentModal({
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, [initialProviderId, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -182,7 +240,10 @@ export function UserBookAppointmentModal({
       setNotes('');
       setServices([]);
       setProviderSearch('');
-      setAvailableDaysOfWeek([]);
+      setAvailabilitySlots([]);
+      setBookedAppointments([]);
+      setBookingError(null);
+      setAppointmentCheckError(null);
     }
   }, [visible]);
 
@@ -190,12 +251,17 @@ export function UserBookAppointmentModal({
     if (!providerId) {
       setServices([]);
       setServiceName(null);
-      setAvailableDaysOfWeek([]);
+      setAvailabilitySlots([]);
+      setBookedAppointments([]);
+      setBookingError(null);
+      setAppointmentCheckError(null);
       return;
     }
     let cancelled = false;
     (async () => {
       setLoadingServices(true);
+      setBookingError(null);
+      setAppointmentCheckError(null);
       try {
         const [serviceList, availability] = await Promise.all([
           listEmployeeServices(providerId),
@@ -204,10 +270,18 @@ export function UserBookAppointmentModal({
         if (!cancelled) {
           setServices(serviceList);
           setServiceName(serviceList[0]?.name ?? null);
-          setAvailableDaysOfWeek(availability);
+          setAvailabilitySlots(availability);
           setSelectedDate(null);
           setSelectedTime(null);
+          setBookedAppointments([]);
           setBookingDetails({});
+          setAppointmentCheckError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setServices([]);
+          setAvailabilitySlots([]);
+          setBookingError('Could not load this provider’s booking details. Please try again.');
         }
       } finally {
         if (!cancelled) setLoadingServices(false);
@@ -219,8 +293,9 @@ export function UserBookAppointmentModal({
   }, [providerId]);
 
   const selectedProvider = providers.find((p) => p.id === providerId);
-  const providerLabel = selectedProvider
-    ? profileDisplayName(selectedProvider.first_name, selectedProvider.last_name)
+  const selectedProviderSummary = selectedProvider ?? initialProvider;
+  const providerLabel = selectedProviderSummary
+    ? profileDisplayName(selectedProviderSummary.first_name, selectedProviderSummary.last_name)
     : '';
 
   const clearProviderSelection = () => {
@@ -230,15 +305,79 @@ export function UserBookAppointmentModal({
     setSelectedTime(null);
     setBookingDetails({});
     setNotes('');
+    setBookingError(null);
+    setAppointmentCheckError(null);
   };
 
   const setBookingDetail = (key: BookingFieldKey, value: string) => {
     setBookingDetails((prev) => ({ ...prev, [key]: value }));
   };
 
+  const clearAdditionalTimes = () => {
+    setBookingDetails((prev) => {
+      const next = { ...prev };
+      delete next.endTime;
+      delete next.dropoffTime;
+      return next;
+    });
+  };
+
+  const selectPrimaryTime = (time: string) => {
+    setSelectedTime(time);
+    clearAdditionalTimes();
+  };
+
   useEffect(() => {
     setBookingDetails({});
+    setSelectedDate(null);
+    setSelectedTime(null);
+    setBookedAppointments([]);
   }, [serviceName]);
+
+  useEffect(() => {
+    setSelectedTime(null);
+    setBookingDetails((prev) => {
+      const next = { ...prev };
+      delete next.startTime;
+      delete next.pickupTime;
+      delete next.endTime;
+      delete next.dropoffTime;
+      return next;
+    });
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (!visible || !providerId || !selectedDate) {
+      setBookedAppointments([]);
+      setAppointmentCheckError(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setLoadingAppointments(true);
+      setAppointmentCheckError(null);
+      try {
+        const appointments = await listProviderAppointmentsBetween(
+          providerId,
+          startOfLocalDay(selectedDate),
+          endOfLocalDay(selectedDate)
+        );
+        if (!cancelled) setBookedAppointments(appointments);
+      } catch {
+        if (!cancelled) {
+          setBookedAppointments([]);
+          setAppointmentCheckError('Could not check this day’s booked times. Please try again.');
+        }
+      } finally {
+        if (!cancelled) setLoadingAppointments(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId, selectedDate, visible]);
 
   const detailsForValidation = useMemo(() => {
     const merged: BookingDetails = { ...bookingDetails };
@@ -252,26 +391,139 @@ export function UserBookAppointmentModal({
     return merged;
   }, [bookingDetails, selectedTime, bookingTemplate]);
 
+  const timeOptions = useMemo(() => {
+    if (!selectedDate) return [];
+
+    const daySlots = availabilitySlots.filter(
+      (slot) => slot.day_of_week === selectedDate.getDay()
+    );
+    if (daySlots.length === 0) return [];
+
+    const now = new Date();
+    const isToday = startOfLocalDay(now).getTime() === selectedDate.getTime();
+    const earliestTodayMinutes = isToday
+      ? roundUpToInterval(now.getHours() * 60 + now.getMinutes(), SLOT_INTERVAL_MINUTES)
+      : 0;
+    const minimumSlotMinutes =
+      bookingTemplate === 'windowed_appointment' ? SLOT_INTERVAL_MINUTES : durationMins;
+    const options: string[] = [];
+
+    daySlots.forEach((slot) => {
+      const startMinute = Math.max(
+        slot.start_minutes,
+        roundUpToInterval(slot.start_minutes, SLOT_INTERVAL_MINUTES),
+        earliestTodayMinutes
+      );
+      const latestStart = slot.end_minutes - minimumSlotMinutes;
+
+      for (let mins = startMinute; mins <= latestStart; mins += SLOT_INTERVAL_MINUTES) {
+        const startsAt = buildStartsAt(selectedDate, minutesToTime12(mins));
+        const endsAt = new Date(startsAt.getTime() + minimumSlotMinutes * 60 * 1000);
+        if (!hasAppointmentConflict(startsAt, endsAt, bookedAppointments)) {
+          options.push(minutesToTime12(mins));
+        }
+      }
+    });
+
+    return [...new Set(options)];
+  }, [availabilitySlots, bookedAppointments, bookingTemplate, durationMins, selectedDate]);
+
+  useEffect(() => {
+    if (selectedTime && !timeOptions.includes(selectedTime)) {
+      setSelectedTime(null);
+      setBookingDetails((prev) => {
+        const next = { ...prev };
+        delete next.startTime;
+        delete next.pickupTime;
+        delete next.endTime;
+        delete next.dropoffTime;
+        return next;
+      });
+    }
+  }, [selectedTime, timeOptions]);
+
+  const getAdditionalTimeOptions = (fieldKey: BookingFieldKey) => {
+    if (!selectedDate || !selectedTime) return [];
+
+    const selectedMinutes = parseTime12ToMinutes(selectedTime);
+    const selectedSlot = availabilitySlots.find(
+      (slot) =>
+        slot.day_of_week === selectedDate.getDay() &&
+        selectedMinutes >= slot.start_minutes &&
+        selectedMinutes < slot.end_minutes
+    );
+    if (!selectedSlot) return [];
+
+    const options: string[] = [];
+    const earliest = selectedMinutes + SLOT_INTERVAL_MINUTES;
+    for (let mins = earliest; mins <= selectedSlot.end_minutes; mins += SLOT_INTERVAL_MINUTES) {
+      if (fieldKey === 'endTime') {
+        const startsAt = buildStartsAt(selectedDate, selectedTime);
+        const endsAt = buildStartsAt(selectedDate, minutesToTime12(mins));
+        if (endsAt <= startsAt || hasAppointmentConflict(startsAt, endsAt, bookedAppointments)) {
+          continue;
+        }
+      }
+      options.push(minutesToTime12(mins));
+    }
+    return options;
+  };
+
+  const startsAt = useMemo(() => {
+    if (!selectedDate || !selectedTime) return null;
+    return buildStartsAt(selectedDate, selectedTime);
+  }, [selectedDate, selectedTime]);
+
+  const endsAt = useMemo(() => {
+    if (!startsAt || !selectedDate) return null;
+    if (bookingTemplate === 'windowed_appointment' && bookingDetails.endTime) {
+      return buildStartsAt(selectedDate, bookingDetails.endTime);
+    }
+    return new Date(startsAt.getTime() + durationMins * 60 * 1000);
+  }, [bookingDetails.endTime, bookingTemplate, durationMins, selectedDate, startsAt]);
+
+  const hasSelectedTimeConflict = Boolean(
+    startsAt && endsAt && hasAppointmentConflict(startsAt, endsAt, bookedAppointments)
+  );
+  const selectedEndIsAfterStart = Boolean(startsAt && endsAt && endsAt > startsAt);
+
   const canSubmit =
     Boolean(user?.id) &&
     Boolean(providerId) &&
     Boolean(serviceName) &&
     selectedDate !== null &&
     selectedTime !== null &&
+    startsAt !== null &&
+    endsAt !== null &&
+    selectedEndIsAfterStart &&
+    !hasSelectedTimeConflict &&
+    !loadingAppointments &&
+    !bookingError &&
+    !appointmentCheckError &&
     !submitting &&
     isBookingComplete(bookingFields, detailsForValidation, selectedDate);
 
   const handleSubmit = async () => {
-    if (!canSubmit || !user?.id || !providerId || !serviceName || !selectedDate || !selectedTime) {
+    if (!canSubmit || !user?.id || !providerId || !serviceName || !startsAt || !endsAt) {
       return;
     }
 
-    const durationMins = DURATION_BY_SERVICE[serviceName.toLowerCase()] ?? 45;
-    const startsAt = buildStartsAt(selectedDate, selectedTime);
-    const endsAt = new Date(startsAt.getTime() + durationMins * 60 * 1000);
-
     setSubmitting(true);
     try {
+      const latestAppointments = await listProviderAppointmentsBetween(
+        providerId,
+        startOfLocalDay(startsAt),
+        endOfLocalDay(startsAt)
+      );
+      setBookedAppointments(latestAppointments);
+      if (hasAppointmentConflict(startsAt, endsAt, latestAppointments)) {
+        Alert.alert(
+          'Time no longer available',
+          'That appointment time was just booked. Please choose another slot.'
+        );
+        return;
+      }
+
       await createAppointment({
         userId: user.id,
         providerId,
@@ -282,14 +534,21 @@ export function UserBookAppointmentModal({
         location: buildAppointmentLocation(
           bookingTemplate,
           detailsForValidation,
-          selectedProvider?.location
+          selectedProviderSummary?.location
         ),
         notes: notes.trim() || null,
       });
       onBooked();
       onClose();
-    } catch {
-      Alert.alert('Booking failed', 'Could not create the appointment. Please try again.');
+    } catch (error) {
+      if (getErrorCode(error) === '23P01') {
+        Alert.alert(
+          'Time no longer available',
+          'That appointment overlaps another booking. Please choose another slot.'
+        );
+      } else {
+        Alert.alert('Booking failed', 'Could not create the appointment. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -298,7 +557,7 @@ export function UserBookAppointmentModal({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Book appointment</Text>
             <Text style={styles.subtitle}>
@@ -310,13 +569,13 @@ export function UserBookAppointmentModal({
           </TouchableOpacity>
         </View>
 
-        {providerSelected && selectedProvider ? (
+        {providerSelected && selectedProviderSummary ? (
           <View style={styles.selectedProviderBar}>
             <ProviderAvatar name={providerLabel} size={44} />
             <View style={styles.selectedProviderInfo}>
               <Text style={styles.selectedProviderName}>{providerLabel}</Text>
               <Text style={styles.selectedProviderRole} numberOfLines={1}>
-                {providerSubtitle(selectedProvider)}
+                {providerSubtitle(selectedProviderSummary)}
               </Text>
             </View>
             <TouchableOpacity
@@ -417,47 +676,136 @@ export function UserBookAppointmentModal({
               <Text style={styles.sectionLabel}>Service</Text>
               {loadingServices ? (
                 <ActivityIndicator color={theme.colors.secondary} style={styles.inlineLoader} />
+              ) : bookingError ? (
+                <View style={styles.noticeCard}>
+                  <Ionicons name="alert-circle-outline" size={20} color={theme.colors.destructive} />
+                  <Text style={styles.noticeText}>{bookingError}</Text>
+                </View>
+              ) : services.length === 0 ? (
+                <View style={styles.noticeCard}>
+                  <Ionicons name="briefcase-outline" size={20} color={theme.colors.textSecondary} />
+                  <Text style={styles.noticeText}>
+                    This provider has not listed bookable services yet.
+                  </Text>
+                </View>
               ) : (
                 <View style={styles.wrapRow}>
-                  {services.map((s) => {
-                    const active = s.name === serviceName;
+                  {services.map((service) => {
+                    const active = service.name === serviceName;
+                    const meta = [
+                      service.durationMinutes ? formatServiceDuration(service.durationMinutes) : null,
+                      service.priceCents != null ? formatServicePrice(service.priceCents) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
                     return (
                       <TouchableOpacity
-                        key={s.id}
+                        key={service.id}
                         style={[styles.pill, active && styles.pillActive]}
-                        onPress={() => setServiceName(s.name)}
+                        onPress={() => setServiceName(service.name)}
                       >
-                        <Text style={[styles.pillText, active && styles.pillTextActive]}>{s.name}</Text>
+                        <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                          {service.name}
+                        </Text>
+                        {meta ? (
+                          <Text style={[styles.pillMeta, active && styles.pillMetaActive]}>{meta}</Text>
+                        ) : null}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               )}
 
+              {serviceName ? (
+                <>
               <Text style={styles.sectionLabel}>Date</Text>
               <BookingCalendar
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
-                availableDaysOfWeek={
-                  availableDaysOfWeek.length > 0 ? availableDaysOfWeek : null
-                }
+                availableDaysOfWeek={availableDaysOfWeek}
               />
+              {!loadingServices && availabilitySlots.length === 0 ? (
+                <Text style={styles.helperText}>
+                  This provider has not listed bookable hours yet.
+                </Text>
+              ) : null}
 
               <Text style={styles.sectionLabel}>Time</Text>
-              <View style={styles.wrapRow}>
-                {TIME_SLOTS.map((t) => {
-                  const active = t === selectedTime;
+              {!selectedDate ? (
+                <Text style={styles.helperText}>Select a date to view available times.</Text>
+              ) : loadingAppointments ? (
+                <ActivityIndicator color={theme.colors.secondary} style={styles.inlineLoader} />
+              ) : appointmentCheckError ? (
+                <View style={styles.noticeCard}>
+                  <Ionicons name="alert-circle-outline" size={20} color={theme.colors.destructive} />
+                  <Text style={styles.noticeText}>{appointmentCheckError}</Text>
+                </View>
+              ) : timeOptions.length === 0 ? (
+                <View style={styles.noticeCard}>
+                  <Ionicons name="time-outline" size={20} color={theme.colors.textSecondary} />
+                  <Text style={styles.noticeText}>
+                    No available times remain for this date. Choose another available day.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.wrapRow}>
+                  {timeOptions.map((t) => {
+                    const active = t === selectedTime;
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.pill, active && styles.pillActive]}
+                        onPress={() => selectPrimaryTime(t)}
+                      >
+                        <Text style={[styles.pillText, active && styles.pillTextActive]}>{t}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {selectedTime && additionalTimeFields.length > 0 ? (
+                additionalTimeFields.map((field) => {
+                  const options = getAdditionalTimeOptions(field.key);
+                  const value = bookingDetails[field.key] ?? null;
                   return (
-                    <TouchableOpacity
-                      key={t}
-                      style={[styles.pill, active && styles.pillActive]}
-                      onPress={() => setSelectedTime(t)}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{t}</Text>
-                    </TouchableOpacity>
+                    <View key={field.key}>
+                      <Text style={styles.sectionLabel}>
+                        {field.label}
+                        {!field.required ? (
+                          <Text style={styles.optionalLabel}> (optional)</Text>
+                        ) : null}
+                      </Text>
+                      {options.length === 0 ? (
+                        <Text style={styles.helperText}>No later times are available.</Text>
+                      ) : (
+                        <View style={styles.wrapRow}>
+                          {options.map((t) => {
+                            const active = t === value;
+                            return (
+                              <TouchableOpacity
+                                key={`${field.key}-${t}`}
+                                style={[styles.pill, active && styles.pillActive]}
+                                onPress={() => setBookingDetail(field.key, active ? '' : t)}
+                              >
+                                <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                                  {t}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
                   );
-                })}
-              </View>
+                })
+              ) : null}
+
+              {hasSelectedTimeConflict ? (
+                <Text style={styles.errorText}>
+                  That time is no longer available. Choose another slot.
+                </Text>
+              ) : null}
 
               {showProviderLocation ? (
                 <>
@@ -467,7 +815,7 @@ export function UserBookAppointmentModal({
                     <View style={styles.providerLocationText}>
                       <Text style={styles.providerLocationTitle}>Visit the business</Text>
                       <Text style={styles.providerLocationValue}>
-                        {selectedProvider?.location?.trim() ||
+                        {selectedProviderSummary?.location?.trim() ||
                           'Address not listed — contact the provider.'}
                       </Text>
                     </View>
@@ -505,6 +853,8 @@ export function UserBookAppointmentModal({
                 disabled={!canSubmit}
                 style={styles.submit}
               />
+                </>
+              ) : null}
             </>
           </ScrollView>
         )}
@@ -521,7 +871,6 @@ function createStyles(theme: AppTheme) {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     padding: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface,
@@ -676,6 +1025,39 @@ function createStyles(theme: AppTheme) {
     marginTop: theme.spacing.md,
   },
   inlineLoader: { marginVertical: theme.spacing.md },
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  noticeText: {
+    flex: 1,
+    fontFamily: theme.typography.fontFamily.regular,
+    fontSize: theme.typography.sizes.subbody,
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
+  },
+  helperText: {
+    fontFamily: theme.typography.fontFamily.regular,
+    fontSize: theme.typography.sizes.subbody,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+  },
+  errorText: {
+    fontFamily: theme.typography.fontFamily.medium,
+    fontSize: theme.typography.sizes.caption,
+    color: theme.colors.destructive,
+    marginTop: theme.spacing.sm,
+  },
+  optionalLabel: {
+    fontFamily: theme.typography.fontFamily.regular,
+    color: theme.colors.textSecondary,
+  },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
     paddingHorizontal: 14,
@@ -695,6 +1077,13 @@ function createStyles(theme: AppTheme) {
     color: theme.colors.textPrimary,
   },
   pillTextActive: { color: theme.colors.bubbleSentText },
+  pillMeta: {
+    fontFamily: theme.typography.fontFamily.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  pillMetaActive: { color: theme.colors.bubbleSentText, opacity: 0.85 },
   providerLocationCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',

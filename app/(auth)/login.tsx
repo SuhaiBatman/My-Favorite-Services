@@ -33,6 +33,9 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
   const [verificationSource, setVerificationSource] = useState<'signin' | 'signup' | null>(null);
+  const showAppleSignIn = Platform.OS === 'ios';
+  const showGoogleSignIn = Platform.OS === 'android';
+  const showSocialSignIn = showAppleSignIn || showGoogleSignIn;
 
   function isEmailNotConfirmedError(error: { message: string }) {
     return error.message.toLowerCase().includes('email not confirmed');
@@ -287,28 +290,32 @@ export default function LoginScreen() {
             {isSignUp ? 'Sign up to get started' : 'Sign in to continue to your account'}
           </Text>
 
-          <View style={styles.socialContainer}>
-            {Platform.OS === 'ios' && (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={
-                  isDark
-                    ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                    : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-                }
-                cornerRadius={12}
-                style={styles.appleButton}
-                onPress={signInWithApple}
-              />
-            )}
-            <GoogleSignIn disabled={loading} />
-          </View>
+          {showSocialSignIn && (
+            <>
+              <View style={styles.socialContainer}>
+                {showAppleSignIn && (
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonStyle={
+                      isDark
+                        ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                        : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                    }
+                    cornerRadius={12}
+                    style={styles.appleButton}
+                    onPress={signInWithApple}
+                  />
+                )}
+                {showGoogleSignIn && <GoogleSignIn disabled={loading} />}
+              </View>
 
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with email</Text>
-            <View style={styles.dividerLine} />
-          </View>
+              <View style={styles.dividerContainer}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or continue with email</Text>
+                <View style={styles.dividerLine} />
+              </View>
+            </>
+          )}
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>

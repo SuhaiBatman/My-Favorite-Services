@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
@@ -18,11 +18,14 @@ export function GoogleSignIn({ disabled = false }: Props) {
   const { isDark } = useAppTheme();
   const styles = useThemedStyles(createStyles);
   const [loading, setLoading] = useState(false);
+  const platformSupported = Platform.OS === 'android';
   const nativeAvailable = isNativeGoogleSignInAvailable();
 
   useEffect(() => {
-    configureGoogleSignIn();
-  }, []);
+    if (platformSupported) {
+      configureGoogleSignIn();
+    }
+  }, [platformSupported]);
 
   async function handlePress() {
     if (loading || disabled) return;
@@ -35,6 +38,8 @@ export function GoogleSignIn({ disabled = false }: Props) {
       setLoading(false);
     }
   }
+
+  if (!platformSupported) return null;
 
   if (!nativeAvailable) {
     return (

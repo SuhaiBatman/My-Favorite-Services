@@ -8,10 +8,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
+  Alert,
+  type GestureResponderEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import type { AppTheme } from '../../../constants/theme';
 import { useAppTheme } from '../../../contexts/ThemeContext';
 import { useThemedStyles } from '../../../hooks/use-themed-styles';
@@ -19,7 +22,6 @@ import { Card } from '../../Card';
 import { ProviderAvatar } from '../../ProviderAvatar';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Appointment } from '../../../lib/appointments';
-import type { FavoriteProvider } from '../../../lib/favorites';
 import { loadUserHomeData } from '../../../lib/homeLoad';
 import { NewMessageSheet } from '../../NewMessageSheet';
 import {
@@ -27,7 +29,15 @@ import {
   isAppointmentOnLocalDay,
   profileDisplayName,
 } from '../../../lib/format';
+import { useFavorites } from '../../../contexts/FavoritesContext';
 import { peekHomePrefetch } from '../../../lib/homePrefetch';
+import type { FavoriteProvider } from '../../../lib/favorites';
+import { getOrCreateConversation } from '../../../lib/messaging';
+import {
+  FavoriteActionsSheet,
+  type FavoriteActionKey,
+} from '../../FavoriteActionsSheet';
+import { UserBookAppointmentModal } from '../../UserBookAppointmentModal';
 
 const HOME_UPCOMING_PREVIEW_LIMIT = 3;
 interface UserHomeScreenProps {
@@ -44,13 +54,17 @@ export default function UserHomeScreen({
 
   const { user, session } = useAuth();
   const userId = user?.id ?? session?.user?.id ?? null;
+  const { favorites, refresh: refreshFavorites, removeFavorite } = useFavorites();
   const router = useRouter();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [favorites, setFavorites] = useState<FavoriteProvider[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [providerSearchVisible, setProviderSearchVisible] = useState(false);
   const [favoritesExpanded, setFavoritesExpanded] = useState(true);
+  const [actionFavorite, setActionFavorite] = useState<FavoriteProvider | null>(null);
+  const [actionAnchorY, setActionAnchorY] = useState<number | null>(null);
+  const [bookModalVisible, setBookModalVisible] = useState(false);
+  const [bookProviderId, setBookProviderId] = useState<string | null>(null);
   useEffect(() => {
     if (externalModalVisible) {
       setProviderSearchVisible(true);
@@ -61,7 +75,6 @@ export default function UserHomeScreen({
   const load = useCallback(async (id: string) => {
     const data = await loadUserHomeData(id);
     setAppointments(data.appointments);
-    setFavorites(data.favorites);
   }, []);
 
   useEffect(() => {
@@ -73,7 +86,6 @@ export default function UserHomeScreen({
     const cached = peekHomePrefetch(userId);
     if (cached?.variant === 'user') {
       setAppointments(cached.userAppointments);
-      setFavorites(cached.favorites);
       setLoading(false);
       return;
     }
@@ -92,7 +104,7 @@ export default function UserHomeScreen({
     if (!userId) return;
     setRefreshing(true);
     try {
-      await load(userId);
+      await Promise.all([load(userId), refreshFavorites()]);
     } catch (e) {
       console.error('UserHomeScreen refresh:', e);
     } finally {
@@ -105,6 +117,68 @@ export default function UserHomeScreen({
   };
 
   const openSchedule = () => router.push('/schedule');
+
+  const openFavoriteActions = (favorite: FavoriteProvider, event?: GestureResponderEvent) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setActionFavorite(favorite);
+    setActionAnchorY(event?.nativeEvent.pageY ?? null);
+  };
+
+  const closeFavoriteActions = () => {
+    setActionFavorite(null);
+    setActionAnchorY(null);
+  };
+
+  const messageProvider = async (providerId: string) => {
+    try {
+      const conversationId = await getOrCreateConversation(providerId);
+      router.push(`/chat/${conversationId}`);
+    } catch (e) {
+      console.error('messageProvider:', e);
+      Alert.alert('Error', 'Could not start a conversation. Please try again.');
+    }
+  };
+
+  const runFavoriteAction = async (action: FavoriteActionKey) => {
+    const favorite = actionFavorite;
+    if (!favorite) return;
+    const providerId = favorite.provider_id;
+    const profile = favorite.profiles;
+    const name = profileDisplayName(profile?.first_name, profile?.last_name);
+    closeFavoriteActions();
+
+    switch (action) {
+      case 'viewProfile':
+        openProvider(providerId);
+        break;
+      case 'book':
+        setBookProviderId(providerId);
+        setBookModalVisible(true);
+        break;
+      case 'message':
+        await messageProvider(providerId);
+        break;
+      case 'remove':
+        Alert.alert(
+          'Remove from favorites?',
+          `${name} will be removed from your favorites.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Remove',
+              style: 'destructive',
+              onPress: () => {
+                void removeFavorite(providerId).catch((e) => {
+                  console.error('removeFavorite:', e);
+                  Alert.alert('Error', 'Could not remove this favorite. Please try again.');
+                });
+              },
+            },
+          ]
+        );
+        break;
+    }
+  };
 
   const todayAppointments = useMemo(
     () => appointments.filter((a) => isAppointmentOnLocalDay(a.starts_at)),
@@ -262,7 +336,12 @@ export default function UserHomeScreen({
                   ? p.services.split(',').map((s) => s.trim()).filter(Boolean)
                   : [];
                 return (
-                  <Pressable key={fav.id} onPress={() => openProvider(fav.provider_id)}>
+                  <Pressable
+                    key={fav.id}
+                    onPress={() => openProvider(fav.provider_id)}
+                    onLongPress={(event) => openFavoriteActions(fav, event)}
+                    delayLongPress={360}
+                  >
                     <Card style={styles.favCard} variant="elevated">
                       <View style={styles.favTop}>
                         <ProviderAvatar name={name} size={48} />
@@ -306,10 +385,35 @@ export default function UserHomeScreen({
         visible={providerSearchVisible}
         title="Find a provider"
         searchPlaceholder="Search by name or specialty..."
+        excludeFavorites
         onClose={() => setProviderSearchVisible(false)}
         onSelectProvider={(providerId) => {
           setProviderSearchVisible(false);
           openProvider(providerId);
+        }}
+      />
+
+      <FavoriteActionsSheet
+        visible={actionFavorite !== null}
+        favorite={actionFavorite}
+        anchorY={actionAnchorY}
+        onClose={closeFavoriteActions}
+        onAction={(action) => {
+          void runFavoriteAction(action);
+        }}
+      />
+
+      <UserBookAppointmentModal
+        visible={bookModalVisible}
+        initialProviderId={bookProviderId}
+        onClose={() => {
+          setBookModalVisible(false);
+          setBookProviderId(null);
+        }}
+        onBooked={() => {
+          setBookModalVisible(false);
+          setBookProviderId(null);
+          openSchedule();
         }}
       />
     </View>

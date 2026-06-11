@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../../constants/theme';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { useThemedStyles } from '../../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../../hooks/use-full-screen-sheet-top-inset';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { ServiceBookingFields } from '../../components/ServiceBookingFields';
@@ -149,6 +150,7 @@ export default function ScheduleScreen(props: ScheduleScreenProps = {}) {
 function ProviderScheduleScreen({ externalModalVisible, onExternalModalClose }: ScheduleScreenProps = {}) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
 
   const [modalVisible, setModalVisible] = useState(false);
   // Booking State
@@ -332,7 +334,7 @@ function ProviderScheduleScreen({ externalModalVisible, onExternalModalClose }: 
         onRequestClose={handleModalClose}
       >
         <View style={styles.modal}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { paddingTop: topInset + theme.spacing.md }]}>
             <Text style={styles.modalTitle}>Book Appointment</Text>
             <TouchableOpacity onPress={handleModalClose}>
               <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -680,7 +682,6 @@ function createStyles(theme: AppTheme) {
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
     paddingBottom: theme.spacing.md,
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,

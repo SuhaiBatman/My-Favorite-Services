@@ -10,7 +10,7 @@ import {
   Linking,
   Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { AppTheme } from '../../constants/theme';
@@ -18,7 +18,6 @@ import { useAppTheme } from '../../contexts/ThemeContext';
 import { useThemedStyles } from '../../hooks/use-themed-styles';
 import { ProviderAvatar } from '../../components/ProviderAvatar';
 import { useAuth } from '../../contexts/AuthContext';
-import { addFavorite, removeFavorite } from '../../lib/favorites';
 import { getOrCreateConversation } from '../../lib/messaging';
 import {
   fetchProviderProfile,
@@ -26,9 +25,17 @@ import {
   type ProviderProfilePayload,
 } from '../../lib/providerProfile';
 import { profileDisplayName } from '../../lib/format';
+import { listEmployeeServiceOffers } from '../../lib/employeeServices';
+import { formatServiceDuration, formatServicePrice, type ServiceOffer } from '../../lib/serviceOffer';
 import { ProviderProfileEditSheet } from '../../components/ProviderProfileEditSheet';
+import { UserBookAppointmentModal } from '../../components/UserBookAppointmentModal';
 import { Button } from '../../components/Button';
+import {
+  FloatingGlassButton,
+  floatingGlassButtonReservedHeight,
+} from '../../components/FloatingGlassButton';
 import { deleteOwnAccount } from '../../lib/deleteAccount';
+import { useFavorites } from '../../contexts/FavoritesContext';
 import { supabase } from '../../lib/supabase';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -46,48 +53,24 @@ function formatAvailabilityRow(slot: ProviderAvailabilitySlot): string {
   return `${day}: ${formatTime(slot.start_minutes)} - ${formatTime(slot.end_minutes)}`;
 }
 
-type ActionButtonProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-};
-
-function ActionButton({ icon, label, onPress, primary }: ActionButtonProps) {
-  const { theme } = useAppTheme();
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <TouchableOpacity
-      style={[styles.actionBtn, primary && styles.actionBtnPrimary]}
-      onPress={onPress}
-      activeOpacity={0.85}
-    >
-      <Ionicons
-        name={icon}
-        size={22}
-        color={primary ? theme.colors.textInverted : theme.colors.secondary}
-      />
-      <Text style={[styles.actionLabel, primary && styles.actionLabelPrimary]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 export default function ProviderProfileScreen() {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
 
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user, session } = useAuth();
+  const { isFavorite: isProviderFavorite, addFavorite: addToFavorites } = useFavorites();
 
   const [profile, setProfile] = useState<ProviderProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [favorited, setFavorited] = useState(false);
-  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [messageLoading, setMessageLoading] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
+  const [bookVisible, setBookVisible] = useState(false);
+  const [addLoading, setAddLoading] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [serviceOffers, setServiceOffers] = useState<ServiceOffer[]>([]);
 
   const profileId = typeof id === 'string' ? id : id?.[0];
   const isOwnProfile = Boolean(user?.id && profileId && user.id === profileId);
@@ -98,7 +81,12 @@ export default function ProviderProfileScreen() {
     try {
       const payload = await fetchProviderProfile(profileId);
       setProfile(payload);
-      setFavorited(Boolean(payload?.is_favorite));
+      try {
+        const offers = await listEmployeeServiceOffers(profileId);
+        setServiceOffers(offers);
+      } catch {
+        setServiceOffers([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -110,37 +98,18 @@ export default function ProviderProfileScreen() {
 
   const displayName = profileDisplayName(profile?.first_name, profile?.last_name);
   const subtitle = profile?.job_title || profile?.business_name || 'Service Provider';
-  const serviceList = profile?.services ?? [];
+  const serviceList = serviceOffers.length > 0
+    ? serviceOffers
+    : (profile?.services ?? []).map((name) => ({
+        name,
+        durationMinutes: 0,
+        priceCents: 0,
+      }));
   const availabilityList = profile?.availability ?? [];
-
-  const handleToggleFavorite = async () => {
-    if (!profileId) return;
-
-    if (!session || !user) {
-      router.push('/(auth)/login');
-      return;
-    }
-
-    if (user.id === profileId) {
-      Alert.alert("That's you!", 'You cannot add your own profile to favorites.');
-      return;
-    }
-
-    setFavoriteLoading(true);
-    try {
-      if (favorited) {
-        await removeFavorite(profileId, user.id);
-        setFavorited(false);
-      } else {
-        await addFavorite(profileId, user.id);
-        setFavorited(true);
-      }
-    } catch {
-      Alert.alert('Error', 'Could not update favorites. Please try again.');
-    } finally {
-      setFavoriteLoading(false);
-    }
-  };
+  const aboutText = [profile?.bio, profile?.business_description].filter(Boolean).join('\n\n');
+  const hasContactInfo = Boolean(
+    profile?.phone || profile?.email || profile?.website || profile?.location
+  );
 
   const handleMessage = async () => {
     if (!profileId) return;
@@ -158,6 +127,61 @@ export default function ProviderProfileScreen() {
       setMessageLoading(false);
     }
   };
+
+  const handleBook = () => {
+    if (!profileId) return;
+    if (!session || !user) {
+      router.push('/(auth)/login');
+      return;
+    }
+    if (user.id === profileId) {
+      Alert.alert("That's you!", 'You cannot book your own services.');
+      return;
+    }
+    setBookVisible(true);
+  };
+
+  const handleAddToFavorites = async () => {
+    if (!profileId) return;
+    if (!session || !user) {
+      router.push('/(auth)/login');
+      return;
+    }
+    if (user.id === profileId) {
+      Alert.alert("That's you!", 'You cannot add yourself to favorites.');
+      return;
+    }
+    if (!profile) return;
+    setAddLoading(true);
+    try {
+      await addToFavorites(profileId, {
+        id: profileId,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        job_title: profile.job_title,
+        business_name: profile.business_name,
+        bio: profile.bio,
+        services: profile.services?.join(', ') ?? null,
+        location: profile.location,
+      });
+    } catch {
+      Alert.alert('Error', 'Could not add this provider to your favorites.');
+    } finally {
+      setAddLoading(false);
+    }
+  };
+
+  const handleFloatingAction = () => {
+    if (profile?.is_favorite) {
+      handleBook();
+    } else {
+      void handleAddToFavorites();
+    }
+  };
+
+  const isFavorite = profileId
+    ? isProviderFavorite(profileId) || Boolean(profile?.is_favorite)
+    : false;
 
   const openLink = (url: string) => {
     Linking.openURL(url).catch(() => Alert.alert('Error', 'Could not open link.'));
@@ -223,6 +247,11 @@ export default function ProviderProfileScreen() {
     );
   }
 
+  const bottomChromeInset = Math.max(insets.bottom, 24);
+  const scrollBottomPadding = !isOwnProfile
+    ? floatingGlassButtonReservedHeight(bottomChromeInset) + theme.spacing.md
+    : theme.spacing.xl;
+
   if (!profile) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -242,9 +271,13 @@ export default function ProviderProfileScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
+      >
         <View style={styles.hero}>
-          <SafeAreaView edges={['top']} style={styles.heroBar}>
+          <View style={[styles.heroBar, { paddingTop: insets.top }]}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color={theme.colors.textInverted} />
             </TouchableOpacity>
@@ -258,7 +291,7 @@ export default function ProviderProfileScreen() {
                 <Text style={styles.editButtonText}>Edit</Text>
               </TouchableOpacity>
             ) : null}
-          </SafeAreaView>
+          </View>
         </View>
 
         <View style={styles.profileCard}>
@@ -267,62 +300,43 @@ export default function ProviderProfileScreen() {
           </View>
           <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
+          {profile.industry ? (
+            <Text style={styles.industryLine}>{profile.industry}</Text>
+          ) : null}
           {profile.business_name && profile.job_title ? (
             <Text style={styles.companyLine}>{profile.business_name}</Text>
           ) : null}
 
-          <View style={styles.actionsRow}>
-            {!isOwnProfile ? (
-              <>
-                <ActionButton
-                  icon="chatbubble-outline"
-                  label="Message"
-                  onPress={handleMessage}
-                  primary
-                />
-                {profile.phone ? (
-                  <ActionButton
-                    icon="call-outline"
-                    label="Call"
-                    onPress={() => openLink(`tel:${profile.phone}`)}
-                  />
-                ) : null}
-                {profile.email ? (
-                  <ActionButton
-                    icon="mail-outline"
-                    label="Email"
-                    onPress={() => openLink(`mailto:${profile.email}`)}
-                  />
-                ) : null}
-                <ActionButton
-                  icon={favorited ? 'heart' : 'heart-outline'}
-                  label={favorited ? 'Saved' : 'Save'}
-                  onPress={handleToggleFavorite}
-                />
-              </>
-            ) : (
-              <ActionButton
-                icon="create-outline"
-                label="Edit profile"
-                onPress={() => setEditVisible(true)}
-                primary
-              />
-            )}
-          </View>
-
-          {(messageLoading || favoriteLoading) && (
-            <ActivityIndicator style={{ marginTop: 8 }} color={theme.colors.secondary} />
-          )}
+          {!isOwnProfile ? (
+            <TouchableOpacity
+              style={styles.messageButton}
+              onPress={handleMessage}
+              disabled={messageLoading}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Message"
+            >
+              {messageLoading ? (
+                <ActivityIndicator size="small" color={theme.colors.secondary} />
+              ) : (
+                <>
+                  <Ionicons name="chatbubble-outline" size={20} color={theme.colors.secondary} />
+                  <Text style={styles.messageButtonLabel}>Message</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.body}>
-          {profile.bio ? (
+          {aboutText ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>About</Text>
-              <Text style={styles.bodyText}>{profile.bio}</Text>
+              <Text style={styles.bodyText}>{aboutText}</Text>
             </View>
           ) : null}
 
+          {hasContactInfo ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact</Text>
             {profile.phone ? (
@@ -363,14 +377,24 @@ export default function ProviderProfileScreen() {
               </View>
             ) : null}
           </View>
+          ) : null}
 
           {serviceList.length > 0 ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Services</Text>
               {serviceList.map((service) => (
-                <View key={service} style={styles.serviceRow}>
+                <View key={service.name} style={styles.serviceRow}>
                   <Ionicons name="checkmark-circle" size={18} color={theme.colors.secondary} />
-                  <Text style={styles.serviceText}>{service}</Text>
+                  <View style={styles.serviceTextWrap}>
+                    <Text style={styles.serviceText}>{service.name}</Text>
+                    {service.durationMinutes > 0 || service.priceCents > 0 ? (
+                      <Text style={styles.serviceMeta}>
+                        {[formatServiceDuration(service.durationMinutes), formatServicePrice(service.priceCents)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
               ))}
             </View>
@@ -424,6 +448,33 @@ export default function ProviderProfileScreen() {
           profile={profile}
           onClose={() => setEditVisible(false)}
           onSaved={() => void loadProfile()}
+        />
+      ) : null}
+
+      {!isOwnProfile ? (
+        <FloatingGlassButton
+          label={isFavorite ? 'Book' : 'Add'}
+          icon={isFavorite ? 'calendar-outline' : 'add'}
+          onPress={handleFloatingAction}
+          loading={addLoading}
+          bottomInset={bottomChromeInset}
+        />
+      ) : null}
+
+      {!isOwnProfile && profileId && profile ? (
+        <UserBookAppointmentModal
+          visible={bookVisible}
+          onClose={() => setBookVisible(false)}
+          onBooked={() => undefined}
+          initialProviderId={profileId}
+          initialProvider={{
+            id: profileId,
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            job_title: profile.job_title,
+            business_name: profile.business_name,
+            location: profile.location,
+          }}
         />
       ) : null}
     </View>
@@ -524,36 +575,26 @@ function createStyles(theme: AppTheme) {
     color: theme.colors.textSecondary,
     marginTop: 2,
   },
-  actionsRow: {
+  industryLine: {
+    fontFamily: theme.typography.fontFamily.medium,
+    fontSize: theme.typography.sizes.caption,
+    color: theme.colors.secondary,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  messageButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'center',
     gap: theme.spacing.sm,
     marginTop: theme.spacing.lg,
-  },
-  actionBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 72,
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing.lg,
   },
-  actionBtnPrimary: {
-    backgroundColor: theme.colors.secondary,
-    borderColor: theme.colors.secondary,
-  },
-  actionLabel: {
-    fontFamily: theme.typography.fontFamily.medium,
-    fontSize: 11,
-    color: theme.colors.textPrimary,
-    marginTop: 4,
-  },
-  actionLabelPrimary: {
-    color: theme.colors.textInverted,
+  messageButtonLabel: {
+    fontFamily: theme.typography.fontFamily.semiBold,
+    fontSize: theme.typography.sizes.body,
+    color: theme.colors.secondary,
   },
   body: {
     padding: theme.spacing.md,
@@ -603,15 +644,23 @@ function createStyles(theme: AppTheme) {
   },
   serviceRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     paddingVertical: 8,
+  },
+  serviceTextWrap: {
+    flex: 1,
+    gap: 2,
   },
   serviceText: {
     fontFamily: theme.typography.fontFamily.regular,
     fontSize: theme.typography.sizes.subbody,
     color: theme.colors.textPrimary,
-    flex: 1,
+  },
+  serviceMeta: {
+    fontFamily: theme.typography.fontFamily.regular,
+    fontSize: theme.typography.sizes.caption,
+    color: theme.colors.textSecondary,
   },
   scheduleRow: {
     fontFamily: theme.typography.fontFamily.regular,

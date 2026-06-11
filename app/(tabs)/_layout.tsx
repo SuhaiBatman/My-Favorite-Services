@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Alert,
     Dimensions,
@@ -15,6 +15,11 @@ import { useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddActionSheet } from "../../components/AddActionSheet";
 import { LiquidGlassChrome } from "../../components/LiquidGlassChrome";
+import {
+  LiquidGlassContainer,
+  LiquidGlassSurface,
+  canUseNativeGlassEffect,
+} from "../../components/LiquidGlassSurface";
 import { QRCodeModal } from "../../components/QRCodeModal";
 import { QRScannerModal } from "../../components/QRScannerModal";
 import type { AppTheme } from "../../constants/theme";
@@ -66,8 +71,12 @@ function resolveTabIndex(pathname: string, fallback = 0): number {
   return fallback;
 }
 
+function resolveTabIndexFromBubbleX(bubbleX: number): number {
+  return Math.max(0, Math.min(TABS.length - 1, Math.round(bubbleX / TAB_W)));
+}
+
 export default function TabLayout() {
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
   const styles = useThemedStyles(createStyles);
   const { user, hasRole, role, session, roles, isLoading } = useAuth();
 
@@ -123,7 +132,7 @@ export default function TabLayout() {
   const goTo = useCallback(
     (idx: number, shouldNavigate = true) => {
       const i = Math.max(0, Math.min(TABS.length - 1, idx));
-      if (i === activeRef.current && activeIndex === i) return;
+      const changed = i !== activeRef.current;
 
       activeRef.current = i;
       lastPagerIndex.current = i;
@@ -131,11 +140,11 @@ export default function TabLayout() {
       pagerRef.current?.setPage(i);
       springBubble(i);
 
-      if (shouldNavigate) {
+      if (shouldNavigate && changed) {
         router.navigate(TABS[i].route as any);
       }
     },
-    [router, activeIndex, springBubble],
+    [router, springBubble],
   );
 
   useEffect(() => {
@@ -180,10 +189,11 @@ export default function TabLayout() {
         const x = evt.nativeEvent.pageX - SIDE - TAB_W / 2;
         bubbleX.value = Math.max(0, Math.min((TABS.length - 1) * TAB_W, x));
       },
-      onPanResponderRelease: (evt) => {
-        const x = evt.nativeEvent.pageX - SIDE;
-        const i = Math.max(0, Math.min(TABS.length - 1, Math.floor(x / TAB_W)));
-        goTo(i, true);
+      onPanResponderRelease: () => {
+        goTo(resolveTabIndexFromBubbleX(bubbleX.value), true);
+      },
+      onPanResponderTerminate: () => {
+        goTo(resolveTabIndexFromBubbleX(bubbleX.value), true);
       },
     }),
   ).current;
@@ -219,6 +229,12 @@ export default function TabLayout() {
   const bottomOffset = Math.max(insets.bottom, 24);
   const hasAccountRole = Boolean(role) || roles.length > 0;
   const canShowTabs = !isLoading && !(session && !hasAccountRole);
+  const useNativeGlass = useMemo(canUseNativeGlassEffect, []);
+
+  const getTabTintColor = (focused: boolean) => {
+    if (focused) return theme.colors.secondary;
+    return theme.colors.textSecondary;
+  };
 
   if (!canShowTabs) {
     return <View style={styles.root} />;
@@ -258,6 +274,28 @@ export default function TabLayout() {
         style={[styles.floatingRow, { bottom: bottomOffset }]}
         pointerEvents="box-none"
       >
+        {useNativeGlass ? (
+          <View style={styles.glassWarmupHost} pointerEvents="none">
+            <LiquidGlassContainer style={styles.glassWarmupRow} enabled>
+              {[0, 1, 2].map((index) => (
+                <View
+                  key={index}
+                  style={[styles.glassWarmupBubble, { left: index * 18 }]}
+                  pointerEvents="none"
+                >
+                  <LiquidGlassSurface
+                    theme={theme}
+                    isDark={isDark}
+                    style={StyleSheet.absoluteFill}
+                    borderRadius={12}
+                    interactive={false}
+                  />
+                </View>
+              ))}
+            </LiquidGlassContainer>
+          </View>
+        ) : null}
+
         <LiquidGlassChrome
           width={CHROME_W}
           height={PILL_H}
@@ -274,7 +312,7 @@ export default function TabLayout() {
                 style={styles.fabHit}
                 hitSlop={8}
               >
-                <Ionicons name={fabConfig.icon} size={22} color="#FFFFFF" />
+                <Ionicons name={fabConfig.icon} size={22} color={theme.colors.secondary} />
               </TouchableOpacity>
             ) : undefined
           }
@@ -282,9 +320,7 @@ export default function TabLayout() {
           <View style={[styles.tabRow, { width: PILL_W }]} {...pan.panHandlers}>
             {TABS.map((tab, idx) => {
               const focused = activeIndex === idx;
-              const tintColor = focused
-                ? theme.colors.secondary
-                : theme.colors.textSecondary;
+              const tintColor = getTabTintColor(focused);
               return (
                 <View key={tab.name} style={styles.tabItem}>
                   <Ionicons
@@ -381,6 +417,28 @@ function createStyles(theme: AppTheme) {
       height: "100%",
       alignItems: "center",
       justifyContent: "center",
+    },
+    glassWarmupHost: {
+      position: "absolute",
+      left: 0,
+      bottom: 0,
+      width: 1,
+      height: 1,
+      overflow: "hidden",
+      opacity: 0.01,
+    },
+    glassWarmupRow: {
+      position: "relative",
+      width: 72,
+      height: 24,
+    },
+    glassWarmupBubble: {
+      position: "absolute",
+      top: 0,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      overflow: "hidden",
     },
   });
 }

@@ -16,6 +16,7 @@ import type { User } from '@supabase/supabase-js';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-inset';
 import { Button } from './Button';
 import {
   cancelPendingCredentialChange,
@@ -58,6 +59,7 @@ export function ChangeCredentialSheet({
 }: ChangeCredentialSheetProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
 
   const [step, setStep] = useState<Step>('reauth');
   const [password, setPassword] = useState('');
@@ -342,7 +344,7 @@ export function ChangeCredentialSheet({
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
           <TouchableOpacity onPress={handleClose} disabled={loading}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
           </TouchableOpacity>
@@ -459,7 +461,6 @@ function createStyles(theme: AppTheme) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.lg,
       paddingBottom: theme.spacing.sm,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,

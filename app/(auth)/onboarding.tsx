@@ -36,6 +36,11 @@ import { BusinessAutocompleteInput } from '../../components/BusinessAutocomplete
 import { JobTitleAutocompleteInput } from '../../components/JobTitleAutocompleteInput';
 import { ServicesOfferInput } from '../../components/ServicesOfferInput';
 import {
+  isCompleteServiceOffer,
+  normalizeServiceOffers,
+  serviceOffersToProfileString,
+} from '../../lib/serviceOffer';
+import {
   buildIndustryOptions,
   mergeCustomIndustries,
   normalizeCustomIndustry,
@@ -201,7 +206,9 @@ export default function OnboardingScreen() {
             business_name: data.business_name || '',
             job_title: data.job_title || '',
             bio: data.bio || '',
-            services: data.services ? data.services.split(', ').filter(Boolean) : [],
+            services: data.services
+              ? normalizeServiceOffers(data.services.split(', ').filter(Boolean))
+              : [],
             industry: data.industry || '',
             custom_industries: mergeCustomIndustries([], data.industry || ''),
             business_description: data.business_description || '',
@@ -408,12 +415,21 @@ export default function OnboardingScreen() {
         }
         return true;
       }
-      case 'work':
+      case 'work': {
         if (!formData.job_title || !formData.business_name) {
           Alert.alert('Missing Information', 'Please enter your job title and business name.');
           return false;
         }
+        const incompleteService = formData.services.find((service) => !isCompleteServiceOffer(service));
+        if (incompleteService) {
+          Alert.alert(
+            'Service details required',
+            `Add a time estimate and cost for "${incompleteService.name}", or remove it to continue.`
+          );
+          return false;
+        }
         return true;
+      }
       case 'business':
         if (!formData.business_name) {
           Alert.alert('Missing Information', 'Please enter your business name.');
@@ -497,6 +513,17 @@ export default function OnboardingScreen() {
   };
 
   const handleFinishOnboarding = async () => {
+    if (selectedRole === 'employee') {
+      const incompleteService = formData.services.find((service) => !isCompleteServiceOffer(service));
+      if (incompleteService) {
+        Alert.alert(
+          'Service details required',
+          `Add a time estimate and cost for "${incompleteService.name}", or remove it to finish setup.`
+        );
+        return;
+      }
+    }
+
     setLoading(true);
     // Block auth guard from routing to tabs before celebration is scheduled.
     setIsCelebrating(true);
@@ -530,7 +557,7 @@ export default function OnboardingScreen() {
           work_days: workDaysStr,
           flexible_hours: formData.flexible_hours,
           bio: formData.bio,
-          services: formData.services.join(', '),
+          services: serviceOffersToProfileString(formData.services),
           industry: formData.industry,
           business_description: formData.business_description,
           website: formData.website,
@@ -542,7 +569,16 @@ export default function OnboardingScreen() {
       );
 
       if (user?.id) {
-        void clearOnboardingProgress(user.id);
+        await clearOnboardingProgress(user.id);
+      }
+
+      if (user?.id && selectedRole === 'employee') {
+        await persistEmployeeStructuredData(
+          user.id,
+          formData.services,
+          formData.selected_days,
+          formData.day_timings
+        );
       }
 
       showCelebration({
@@ -551,15 +587,6 @@ export default function OnboardingScreen() {
       });
 
       router.replace('/(tabs)');
-
-      if (user?.id && selectedRole === 'employee') {
-        void persistEmployeeStructuredData(
-          user.id,
-          formData.services,
-          formData.selected_days,
-          formData.day_timings
-        ).catch((e) => console.error('persistEmployeeStructuredData:', e));
-      }
     } catch {
       hideCelebration();
       Alert.alert('Error', 'Failed to save profile. Please try again.');

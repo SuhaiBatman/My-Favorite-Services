@@ -13,9 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-inset';
 import { ProviderAvatar } from './ProviderAvatar';
 import { listMessageableProviders, type ProviderListItem } from '../lib/messaging';
 import { profileDisplayName } from '../lib/format';
+import { useFavorites } from '../contexts/FavoritesContext';
 
 type NewMessageSheetProps = {
   visible: boolean;
@@ -23,6 +25,8 @@ type NewMessageSheetProps = {
   onSelectProvider: (providerId: string) => void;
   title?: string;
   searchPlaceholder?: string;
+  /** Hide providers already saved to the user's favorites list. */
+  excludeFavorites?: boolean;
 };
 
 export function NewMessageSheet({
@@ -31,9 +35,12 @@ export function NewMessageSheet({
   onSelectProvider,
   title = 'New message',
   searchPlaceholder = 'Search providers...',
+  excludeFavorites = false,
 }: NewMessageSheetProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
+  const { isFavorite } = useFavorites();
 
   const [providers, setProviders] = useState<ProviderListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,14 +70,17 @@ export function NewMessageSheet({
   }, [visible]);
 
   const filtered = useMemo(() => {
+    let list = excludeFavorites
+      ? providers.filter((p) => !isFavorite(p.id))
+      : providers;
     const q = search.trim().toLowerCase();
-    if (!q) return providers;
-    return providers.filter((p) => {
+    if (!q) return list;
+    return list.filter((p) => {
       const name = profileDisplayName(p.first_name, p.last_name).toLowerCase();
       const title = (p.job_title || p.business_name || '').toLowerCase();
       return name.includes(q) || title.includes(q);
     });
-  }, [providers, search]);
+  }, [providers, search, excludeFavorites, isFavorite]);
 
   return (
     <Modal
@@ -80,7 +90,7 @@ export function NewMessageSheet({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
           <Text style={styles.title}>{title}</Text>
           <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -151,7 +161,6 @@ function createStyles(theme: AppTheme) {
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,

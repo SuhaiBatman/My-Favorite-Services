@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../../constants/theme';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { useThemedStyles } from '../../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../../hooks/use-full-screen-sheet-top-inset';
 import { Card } from '../../components/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter } from 'expo-router';
@@ -129,6 +130,7 @@ export default function HomeScreen(props: HomeScreenProps = {}) {
 function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: HomeScreenProps = {}) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
   const { user, role, roles, setRole } = useAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -323,7 +325,7 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
         onRequestClose={handleModalClose}
       >
         <View style={styles.modal}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { paddingTop: topInset + theme.spacing.md }]}>
             <Text style={styles.modalTitle}>Add a Provider</Text>
             <TouchableOpacity onPress={handleModalClose}>
               <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -690,7 +692,6 @@ function createStyles(theme: AppTheme) {
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
     paddingBottom: theme.spacing.md,
     backgroundColor: theme.colors.surface,
     borderBottomWidth: 1,

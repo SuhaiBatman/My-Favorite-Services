@@ -6,22 +6,14 @@ import {
   isSuccessResponse,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
-import { getGoogleWebClientId } from '../constants/google';
+import { getGoogleSupabaseClientIds, getGoogleWebClientId } from '../constants/google';
 import { supabase } from './supabase';
 
 let configured = false;
 
-/** Native Google Sign-In is unavailable in Expo Go (no native module). */
+/** Google Sign-In is Android-only in this app and unavailable in Expo Go. */
 export function isNativeGoogleSignInAvailable(): boolean {
-  return Constants.appOwnership !== 'expo';
-}
-
-function getGoogleIosClientId(): string | undefined {
-  const fromEnv = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
-  if (fromEnv) return fromEnv;
-
-  const extra = Constants.expoConfig?.extra as { googleIosClientId?: string } | undefined;
-  return extra?.googleIosClientId?.trim() || undefined;
+  return Platform.OS === 'android' && Constants.appOwnership !== 'expo';
 }
 
 export function configureGoogleSignIn(): void {
@@ -37,11 +29,8 @@ export function configureGoogleSignIn(): void {
     return;
   }
 
-  const iosClientId = getGoogleIosClientId();
-
   GoogleSignin.configure({
     webClientId,
-    ...(Platform.OS === 'ios' && iosClientId ? { iosClientId } : {}),
     offlineAccess: false,
   });
 
@@ -61,6 +50,14 @@ export function isGoogleSignInConfigured(): boolean {
 export async function signInWithGoogleNative(): Promise<{
   error: { message: string } | null;
 }> {
+  if (Platform.OS !== 'android') {
+    return {
+      error: {
+        message: 'Google Sign-In is only available on Android in this app.',
+      },
+    };
+  }
+
   if (!isNativeGoogleSignInAvailable()) {
     return {
       error: {
@@ -91,6 +88,18 @@ export async function signInWithGoogleNative(): Promise<{
       provider: 'google',
       token: idToken,
     });
+
+    if (error?.message?.toLowerCase().includes('bad id token')) {
+      const clientIds = getGoogleSupabaseClientIds();
+      return {
+        error: {
+          message:
+            'Supabase rejected the Google ID token. In Dashboard → Auth → Providers → Google, enable the provider, set Client ID + Secret from your Web OAuth client, and add these Client IDs (comma-separated): ' +
+            (clientIds || '(set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env)') +
+            '. The Web Client ID must be listed — native sign-in uses it as the token audience.',
+        },
+      };
+    }
 
     return error ? { error } : { error: null };
   } catch (e: unknown) {

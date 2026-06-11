@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
+import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-inset';
 import { ProviderAvatar } from './ProviderAvatar';
 import {
   listMessageableClients,
@@ -40,6 +41,7 @@ export function EmployeeNewMessageSheet({
 }: EmployeeNewMessageSheetProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
 
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,7 +98,7 @@ export function EmployeeNewMessageSheet({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
           <Text style={styles.title}>New message</Text>
           <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -168,7 +170,6 @@ function createStyles(theme: AppTheme) {
       justifyContent: 'space-between',
       alignItems: 'center',
       padding: theme.spacing.md,
-      paddingTop: theme.spacing.lg,
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,

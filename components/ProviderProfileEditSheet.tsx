@@ -11,15 +11,25 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-inset';
 import type { AppTheme } from '../constants/theme';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { useThemedStyles } from '../hooks/use-themed-styles';
 import { Button } from './Button';
+import { ServicesOfferInput } from './ServicesOfferInput';
 import { useAuth } from '../contexts/AuthContext';
 import type { ProviderProfilePayload } from '../lib/providerProfile';
 import { persistEmployeeStructuredData } from '../lib/onboardingPersistence';
 import { buildScheduleProfileFields, slotsToSchedule, type DayTiming } from '../lib/profileSchedule';
 import { ProfileScheduleEditor } from './ProfileScheduleEditor';
+import { listEmployeeServiceOffers } from '../lib/employeeServices';
+import {
+  isCompleteServiceOffer,
+  normalizeServiceOffers,
+  serviceOffersToProfileString,
+  type ServiceOffer,
+} from '../lib/serviceOffer';
 
 type ProviderProfileEditSheetProps = {
   visible: boolean;
@@ -36,6 +46,7 @@ export function ProviderProfileEditSheet({
 }: ProviderProfileEditSheetProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const topInset = useFullScreenSheetTopInset();
   const { user, updateProfile } = useAuth();
 
   const [firstName, setFirstName] = useState('');
@@ -47,15 +58,16 @@ export function ProviderProfileEditSheet({
   const [email, setEmail] = useState('');
   const [website, setWebsite] = useState('');
   const [location, setLocation] = useState('');
-  const [services, setServices] = useState<string[]>([]);
-  const [serviceInput, setServiceInput] = useState('');
+  const [services, setServices] = useState<ServiceOffer[]>([]);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [dayTimings, setDayTimings] = useState<Record<string, DayTiming>>({});
   const [flexibleHours, setFlexibleHours] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingServices, setLoadingServices] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+
     setFirstName(profile.first_name ?? '');
     setLastName(profile.last_name ?? '');
     setJobTitle(profile.job_title ?? '');
@@ -65,25 +77,33 @@ export function ProviderProfileEditSheet({
     setEmail(profile.email ?? '');
     setWebsite(profile.website ?? '');
     setLocation(profile.location ?? '');
-    setServices(profile.services ?? []);
-    setServiceInput('');
+    setServices(normalizeServiceOffers(profile.services ?? []));
     const schedule = slotsToSchedule(profile.availability ?? []);
     setSelectedDays(schedule.selectedDays);
     setDayTimings(schedule.dayTimings);
     setFlexibleHours(Boolean(profile.flexible_hours));
-  }, [visible, profile]);
 
-  const addService = () => {
-    const trimmed = serviceInput.trim();
-    if (trimmed && !services.includes(trimmed)) {
-      setServices([...services, trimmed]);
-    }
-    setServiceInput('');
-  };
+    if (!user?.id) return;
 
-  const removeService = (service: string) => {
-    setServices(services.filter((s) => s !== service));
-  };
+    let cancelled = false;
+    (async () => {
+      setLoadingServices(true);
+      try {
+        const structuredServices = await listEmployeeServiceOffers(user.id);
+        if (!cancelled && structuredServices.length > 0) {
+          setServices(structuredServices);
+        }
+      } catch {
+        // Fall back to profile.services names already loaded above.
+      } finally {
+        if (!cancelled) setLoadingServices(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, profile, user?.id]);
 
   const handleScheduleChange = (days: string[], timings: Record<string, DayTiming>) => {
     setSelectedDays(days);
@@ -93,6 +113,15 @@ export function ProviderProfileEditSheet({
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
       Alert.alert('Missing information', 'First and last name are required.');
+      return;
+    }
+
+    const incompleteService = services.find((service) => !isCompleteServiceOffer(service));
+    if (incompleteService) {
+      Alert.alert(
+        'Service details required',
+        `Add a time estimate and cost for "${incompleteService.name}", or remove it to save.`
+      );
       return;
     }
 
@@ -110,7 +139,7 @@ export function ProviderProfileEditSheet({
         email: email.trim() || undefined,
         website: website.trim() || undefined,
         location: location.trim() || undefined,
-        services: services.length > 0 ? services.join(', ') : undefined,
+        services: services.length > 0 ? serviceOffersToProfileString(services) : undefined,
         work_days: work_days || undefined,
         timings: timings || undefined,
         flexible_hours: flexibleHours,
@@ -136,8 +165,8 @@ export function ProviderProfileEditSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
           <Text style={styles.title}>Edit profile</Text>
           <TouchableOpacity onPress={onClose} disabled={saving}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -161,32 +190,11 @@ export function ProviderProfileEditSheet({
           <Field label="Location" value={location} onChangeText={setLocation} />
 
           <Text style={styles.groupTitle}>Services</Text>
-          <View style={styles.servicesRow}>
-            <TextInput
-              style={styles.servicesInput}
-              placeholder="e.g. Haircut, Coloring…"
-              placeholderTextColor="#94A3B8"
-              value={serviceInput}
-              onChangeText={setServiceInput}
-              onSubmitEditing={addService}
-              returnKeyType="done"
-            />
-            <TouchableOpacity style={styles.addServiceBtn} onPress={addService}>
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          {services.length > 0 ? (
-            <View style={styles.serviceChips}>
-              {services.map((service) => (
-                <View key={service} style={styles.serviceChip}>
-                  <Text style={styles.serviceChipText}>{service}</Text>
-                  <TouchableOpacity onPress={() => removeService(service)} hitSlop={8}>
-                    <Ionicons name="close-circle" size={18} color={theme.colors.secondary} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          ) : null}
+          {loadingServices ? (
+            <ActivityIndicator color={theme.colors.secondary} style={styles.servicesLoader} />
+          ) : (
+            <ServicesOfferInput services={services} onChangeServices={setServices} />
+          )}
 
           <Text style={styles.groupTitle}>Availability</Text>
           <ProfileScheduleEditor
@@ -204,7 +212,7 @@ export function ProviderProfileEditSheet({
           />
           {saving ? <ActivityIndicator color={theme.colors.secondary} /> : null}
         </ScrollView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -272,8 +280,8 @@ function createStyles(theme: AppTheme) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      padding: theme.spacing.md,
-      paddingTop: theme.spacing.lg,
+      paddingHorizontal: theme.spacing.md,
+      paddingBottom: theme.spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       backgroundColor: theme.colors.surface,
@@ -291,53 +299,8 @@ function createStyles(theme: AppTheme) {
       marginBottom: theme.spacing.sm,
       marginTop: theme.spacing.sm,
     },
-    servicesRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: theme.spacing.sm,
-    },
-    servicesInput: {
-      flex: 1,
-      fontFamily: theme.typography.fontFamily.regular,
-      fontSize: theme.typography.sizes.body,
-      color: theme.colors.textPrimary,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      borderRadius: theme.borderRadius.md,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 12,
-    },
-    addServiceBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: theme.borderRadius.md,
-      backgroundColor: theme.colors.secondary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    serviceChips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
+    servicesLoader: {
       marginBottom: theme.spacing.md,
-    },
-    serviceChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      borderRadius: theme.borderRadius.lg,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    serviceChipText: {
-      fontFamily: theme.typography.fontFamily.medium,
-      fontSize: theme.typography.sizes.caption,
-      color: theme.colors.textPrimary,
     },
   });
 }

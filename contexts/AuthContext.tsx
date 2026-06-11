@@ -217,19 +217,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         setSession(session);
         const sessionUser = session?.user ?? null;
         setUser(sessionUser);
-        try {
-          if (sessionUser) {
-            await hydrateRolesFromProfile(sessionUser);
-          } else {
-            syncFromUser(null);
-          }
-        } finally {
-          setIsLoading(false);
-        }
+
+        // Defer async Supabase calls — awaiting them inside this callback deadlocks
+        // updateUser/setSession (see supabase-js auth state change docs).
+        setTimeout(() => {
+          void (async () => {
+            try {
+              if (sessionUser) {
+                await hydrateRolesFromProfile(sessionUser);
+              } else {
+                syncFromUser(null);
+              }
+            } finally {
+              setIsLoading(false);
+            }
+          })();
+        }, 0);
       }
     );
 
@@ -318,6 +325,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     const payload = { ...profileData, ...roleFields };
+    const authMetadata = slimAuthMetadata(payload);
+
+    suppressHydrateUntilRef.current = Date.now() + 4_000;
 
     const { data: profileRow, error: profileError } = await supabase
       .from('profiles')
@@ -330,6 +340,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .single();
 
     if (profileError) {
+      suppressHydrateUntilRef.current = 0;
       console.error('Error updating public profile:', profileError);
       throw profileError;
     }
@@ -344,34 +355,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
     }
 
-    if (!options?.profileTableOnly) {
-      const { data, error: authError } = await supabase.auth.updateUser({
-        data: slimAuthMetadata(payload),
-      });
-
-      if (authError) {
-        console.error('Error updating auth metadata:', authError);
-        throw authError;
-      }
-
-      if (data.user) {
-        setUser(data.user);
-      }
+    if (options?.profileTableOnly) {
+      suppressHydrateUntilRef.current = 0;
       return;
     }
 
-    const { data, error: authError } = await supabase.auth.updateUser({
-      data: slimAuthMetadata(payload),
+    setUser({
+      ...user,
+      user_metadata: {
+        ...user.user_metadata,
+        ...authMetadata,
+      },
     });
 
-    if (authError) {
-      console.error('Error updating auth metadata:', authError);
-      throw authError;
-    }
-
-    if (data.user) {
-      setUser(data.user);
-    }
+    void supabase.auth
+      .updateUser({ data: authMetadata })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error updating auth metadata:', error);
+          return;
+        }
+        if (data.user) {
+          setUser(data.user);
+        }
+      })
+      .finally(() => {
+        suppressHydrateUntilRef.current = 0;
+      });
   };
 
   const completeOnboarding = async (

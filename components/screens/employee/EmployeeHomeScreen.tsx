@@ -19,7 +19,6 @@ import { Card } from '../../Card';
 import { ProviderAvatar } from '../../ProviderAvatar';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { Appointment } from '../../../lib/appointments';
-import type { FavoriteProvider } from '../../../lib/favorites';
 import { loadEmployeeHomeData } from '../../../lib/homeLoad';
 import { NewMessageSheet } from '../../NewMessageSheet';
 import {
@@ -27,6 +26,7 @@ import {
   isAppointmentOnLocalDay,
   profileDisplayName,
 } from '../../../lib/format';
+import { useFavorites } from '../../../contexts/FavoritesContext';
 import { peekHomePrefetch } from '../../../lib/homePrefetch';
 
 const HOME_UPCOMING_PREVIEW_LIMIT = 3;
@@ -128,10 +128,10 @@ export default function EmployeeHomeScreen({
 
   const { user, session } = useAuth();
   const userId = user?.id ?? session?.user?.id ?? null;
+  const { favorites, refresh: refreshFavorites } = useFavorites();
   const router = useRouter();
   const [asProvider, setAsProvider] = useState<Appointment[]>([]);
   const [asClient, setAsClient] = useState<Appointment[]>([]);
-  const [favorites, setFavorites] = useState<FavoriteProvider[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [providerSearchVisible, setProviderSearchVisible] = useState(false);
@@ -148,7 +148,6 @@ export default function EmployeeHomeScreen({
     const data = await loadEmployeeHomeData(id);
     setAsProvider(data.asProvider);
     setAsClient(data.asClient);
-    setFavorites(data.favorites);
   }, []);
 
   useEffect(() => {
@@ -161,7 +160,6 @@ export default function EmployeeHomeScreen({
     if (cached?.variant === 'employee') {
       setAsProvider(cached.providerAppointments ?? []);
       setAsClient(cached.userAppointments);
-      setFavorites(cached.favorites);
       setLoading(false);
       return;
     }
@@ -180,7 +178,7 @@ export default function EmployeeHomeScreen({
     if (!userId) return;
     setRefreshing(true);
     try {
-      await load(userId);
+      await Promise.all([load(userId), refreshFavorites()]);
     } catch (e) {
       console.error('EmployeeHomeScreen refresh:', e);
     } finally {
@@ -319,6 +317,7 @@ export default function EmployeeHomeScreen({
         visible={providerSearchVisible}
         title="Find a provider"
         searchPlaceholder="Search by name or specialty..."
+        excludeFavorites
         onClose={() => setProviderSearchVisible(false)}
         onSelectProvider={(providerId) => {
           setProviderSearchVisible(false);

@@ -1,16 +1,21 @@
-import { BlurView } from "expo-blur";
-import { GlassView, isGlassEffectAPIAvailable } from "expo-glass-effect";
-import React from "react";
+import React, { useMemo } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import Animated, {
-    useAnimatedStyle,
-    type SharedValue,
+  useAnimatedStyle,
+  type SharedValue,
 } from "react-native-reanimated";
 import type { AppTheme } from "../constants/theme";
 import { useAppTheme } from "../contexts/ThemeContext";
 import { useThemedStyles } from "../hooks/use-themed-styles";
+import { colorWithOpacity } from "../lib/colorWithOpacity";
+import {
+  LiquidGlassContainer,
+  LiquidGlassSurface,
+  canUseNativeGlassEffect,
+  glassShellStyle,
+} from "./LiquidGlassSurface";
 
-const USE_NATIVE_GLASS = Platform.OS === "ios" && isGlassEffectAPIAvailable();
+const IS_ANDROID = Platform.OS === "android";
 
 const BUBBLE_INSET_H = 5;
 const BUBBLE_INSET_V = 6;
@@ -32,11 +37,17 @@ function SelectionBubble({
   radius,
   tabWidth,
   bubbleX,
+  theme,
+  isDark,
+  useNativeGlass,
 }: {
   height: number;
   radius: number;
   tabWidth: number;
   bubbleX: SharedValue<number>;
+  theme: AppTheme;
+  isDark: boolean;
+  useNativeGlass: boolean;
 }) {
   const styles = useThemedStyles(createStyles);
 
@@ -52,96 +63,89 @@ function SelectionBubble({
     <Animated.View
       style={[
         styles.bubble,
-        { height: bubbleHeight, borderRadius: bubbleRadius },
+        {
+          height: bubbleHeight,
+          borderRadius: bubbleRadius,
+          borderColor: colorWithOpacity(theme.colors.textPrimary, 0.12),
+        },
         bubbleStyle,
       ]}
       pointerEvents="none"
     >
-      {USE_NATIVE_GLASS ? (
-        <GlassView
-          style={StyleSheet.absoluteFill}
-          glassEffectStyle="clear"
-          isInteractive
-        />
-      ) : (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.bubbleFallback,
-            { borderRadius: bubbleRadius },
-          ]}
-        />
-      )}
-    </Animated.View>
-  );
-}
-
-function FrostedPill({
-  width,
-  height,
-  radius,
-  children,
-}: {
-  width: number;
-  height: number;
-  radius: number;
-  children: React.ReactNode;
-}) {
-  const styles = useThemedStyles(createStyles);
-
-  return (
-    <View style={[styles.pillShell, { width, height, borderRadius: radius }]}>
-      <BlurView
-        intensity={78}
-        tint="systemUltraThinMaterialLight"
+      <LiquidGlassSurface
+        theme={theme}
+        isDark={isDark}
         style={StyleSheet.absoluteFill}
+        borderRadius={bubbleRadius}
+        interactive={useNativeGlass}
+        tintOpacity={isDark ? 0.08 : 0.06}
       />
-      <View
-        style={[styles.edgeHighlight, { borderRadius: radius }]}
-        pointerEvents="none"
-      />
-      {children}
-    </View>
+    </Animated.View>
   );
 }
 
 function FabButton({
   size,
+  theme,
+  isDark,
+  useNativeGlass,
   children,
 }: {
   size: number;
+  theme: AppTheme;
+  isDark: boolean;
+  useNativeGlass: boolean;
   children: React.ReactNode;
 }) {
-  const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
-
   const radius = size / 2;
-
-  if (USE_NATIVE_GLASS) {
-    return (
-      <View
-        style={[
-          styles.fabClip,
-          { width: size, height: size, borderRadius: radius },
-        ]}
-      >
-        <GlassView
-          style={{ width: size, height: size, borderRadius: radius }}
-          glassEffectStyle="regular"
-          isInteractive
-          tintColor={theme.colors.secondary}
-        >
-          <View style={styles.fabInner}>{children}</View>
-        </GlassView>
-      </View>
-    );
-  }
 
   return (
     <View
       style={[
-        styles.fabFallback,
+        styles.fabClip,
+        glassShellStyle(theme),
         { width: size, height: size, borderRadius: radius },
+      ]}
+    >
+      <LiquidGlassSurface
+        theme={theme}
+        isDark={isDark}
+        style={StyleSheet.absoluteFill}
+        borderRadius={radius}
+        interactive={useNativeGlass}
+      />
+      <View style={styles.fabInner}>{children}</View>
+    </View>
+  );
+}
+
+function SolidPill({
+  width,
+  height,
+  radius,
+  theme,
+  children,
+}: {
+  width: number;
+  height: number;
+  radius: number;
+  theme: AppTheme;
+  children: React.ReactNode;
+}) {
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <View
+      style={[
+        styles.pillShell,
+        glassShellStyle(theme),
+        {
+          width,
+          height,
+          borderRadius: radius,
+          backgroundColor: colorWithOpacity(theme.colors.surface, 0.96),
+        },
       ]}
     >
       {children}
@@ -160,7 +164,9 @@ export function LiquidGlassChrome({
   fab,
   hasFab = true,
 }: LiquidGlassChromeProps) {
+  const { theme, isDark } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const useNativeGlass = useMemo(canUseNativeGlassEffect, []);
 
   const radius = height / 2;
 
@@ -171,29 +177,85 @@ export function LiquidGlassChrome({
         radius={radius}
         tabWidth={tabWidth}
         bubbleX={bubbleX}
+        theme={theme}
+        isDark={isDark}
+        useNativeGlass={useNativeGlass}
       />
       <View style={styles.content}>{children}</View>
     </>
   );
 
-  const pill = USE_NATIVE_GLASS ? (
-    <GlassView
-      style={{ width: pillWidth, height, borderRadius: radius }}
-      glassEffectStyle="regular"
-      isInteractive
+  const pill = useNativeGlass ? (
+    <View
+      style={[
+        styles.pillShell,
+        glassShellStyle(theme),
+        { width: pillWidth, height, borderRadius: radius },
+      ]}
     >
+      <LiquidGlassSurface
+        theme={theme}
+        isDark={isDark}
+        style={StyleSheet.absoluteFill}
+        borderRadius={radius}
+        interactive={useNativeGlass}
+      />
       {pillInner}
-    </GlassView>
+    </View>
+  ) : IS_ANDROID ? (
+    <SolidPill width={pillWidth} height={height} radius={radius} theme={theme}>
+      {pillInner}
+    </SolidPill>
   ) : (
-    <FrostedPill width={pillWidth} height={height} radius={radius}>
+    <View
+      style={[
+        styles.pillShell,
+        glassShellStyle(theme),
+        { width: pillWidth, height, borderRadius: radius },
+      ]}
+    >
+      <LiquidGlassSurface
+        theme={theme}
+        isDark={isDark}
+        style={StyleSheet.absoluteFill}
+        borderRadius={radius}
+        interactive={false}
+      />
       {pillInner}
-    </FrostedPill>
+    </View>
   );
 
   return (
     <View style={[styles.row, { width, height, gap }]}>
-      {pill}
-      {hasFab && fab ? <FabButton size={height}>{fab}</FabButton> : null}
+      {useNativeGlass ? (
+        <LiquidGlassContainer style={styles.glassGroup} spacing={gap} enabled>
+          {pill}
+          {hasFab && fab ? (
+            <FabButton
+              size={height}
+              theme={theme}
+              isDark={isDark}
+              useNativeGlass={useNativeGlass}
+            >
+              {fab}
+            </FabButton>
+          ) : null}
+        </LiquidGlassContainer>
+      ) : (
+        <>
+          {pill}
+          {hasFab && fab ? (
+            <FabButton
+              size={height}
+              theme={theme}
+              isDark={isDark}
+              useNativeGlass={useNativeGlass}
+            >
+              {fab}
+            </FabButton>
+          ) : null}
+        </>
+      )}
     </View>
   );
 }
@@ -204,16 +266,14 @@ function createStyles(theme: AppTheme) {
       flexDirection: "row",
       alignItems: "center",
     },
+    glassGroup: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
     pillShell: {
       overflow: "hidden",
       borderCurve: "continuous",
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(255, 255, 255, 0.55)",
-    },
-    edgeHighlight: {
-      ...StyleSheet.absoluteFillObject,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(255, 255, 255, 0.42)",
     },
     bubble: {
       position: "absolute",
@@ -222,10 +282,6 @@ function createStyles(theme: AppTheme) {
       overflow: "hidden",
       borderCurve: "continuous",
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: "rgba(255, 255, 255, 0.65)",
-    },
-    bubbleFallback: {
-      backgroundColor: "rgba(255, 255, 255, 0.58)",
     },
     content: {
       ...StyleSheet.absoluteFillObject,
@@ -236,20 +292,10 @@ function createStyles(theme: AppTheme) {
       flexShrink: 0,
     },
     fabInner: {
-      width: "100%",
-      height: "100%",
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 1,
       alignItems: "center",
       justifyContent: "center",
-    },
-    fabFallback: {
-      backgroundColor: theme.colors.secondary,
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.12,
-      shadowRadius: 8,
-      elevation: 4,
     },
   });
 }
