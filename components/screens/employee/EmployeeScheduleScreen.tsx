@@ -22,10 +22,16 @@ import { ProviderAvatar } from '../../ProviderAvatar';
 import { ScheduleCalendar } from '../../ScheduleCalendar';
 import { AppointmentDetailSheet } from '../../AppointmentDetailSheet';
 import { UserBookAppointmentModal } from '../../UserBookAppointmentModal';
+import { RescheduleAppointmentModal } from '../../RescheduleAppointmentModal';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
   listAppointmentsInRange,
   respondToAppointmentAsProvider,
+  respondToReschedule,
+  cancelAppointmentAsProvider,
+  subscribeToAppointmentUpdates,
+  hasPendingReschedule,
+  isRescheduleAwaitingResponse,
   type Appointment,
 } from '../../../lib/appointments';
 import {
@@ -84,6 +90,7 @@ export default function EmployeeScheduleScreen({
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [bookModalVisible, setBookModalVisible] = useState(false);
   const [responding, setResponding] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
 
   React.useEffect(() => {
     if (externalModalVisible) {
@@ -122,6 +129,13 @@ export default function EmployeeScheduleScreen({
     }, [loadMonth])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      return subscribeToAppointmentUpdates(user.id, loadMonth);
+    }, [user?.id, loadMonth])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadMonth();
@@ -158,12 +172,51 @@ export default function EmployeeScheduleScreen({
     }
   };
 
+  const handleRescheduleRespond = async (
+    appointmentId: string,
+    decision: 'confirmed' | 'cancelled'
+  ) => {
+    setResponding(true);
+    try {
+      await respondToReschedule(appointmentId, decision);
+      setSelectedAppointment(null);
+      await loadMonth();
+    } catch {
+      Alert.alert('Error', 'Could not update the reschedule request. Please try again.');
+    } finally {
+      setResponding(false);
+    }
+  };
+
+  const handleCancelAsProvider = async (appointmentId: string) => {
+    Alert.alert('Cancel appointment?', 'The client will be notified that this appointment was cancelled.', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel appointment',
+        style: 'destructive',
+        onPress: () => {
+          setResponding(true);
+          void cancelAppointmentAsProvider(appointmentId)
+            .then(() => {
+              setSelectedAppointment(null);
+              return loadMonth();
+            })
+            .catch(() => {
+              Alert.alert('Error', 'Could not cancel the appointment. Please try again.');
+            })
+            .finally(() => setResponding(false));
+        },
+      },
+    ]);
+  };
+
   const openPeerProfile = (appt: Appointment) => {
     const employeeId = user?.id;
     if (!employeeId) return;
+    setSelectedAppointment(null);
     const peerId =
       appt.provider_id === employeeId ? appt.user_id : appt.provider_id;
-    router.push(`/profile/${peerId}`);
+    router.push({ pathname: '/profile/[id]', params: { id: peerId, returnTo: '/schedule' } });
   };
 
   const messagePeer = async (appt: Appointment) => {
@@ -231,9 +284,20 @@ export default function EmployeeScheduleScreen({
                     meeting.provider?.last_name,
                     'Provider'
                   );
-              const roleLabel = asProvider ? 'As provider' : 'As client';
-              const statusConfirmed = meeting.status === 'confirmed';
+              const needsResponse =
+                user?.id &&
+                ((asProvider && meeting.status === 'pending') ||
+                  isRescheduleAwaitingResponse(meeting, user.id));
+              const roleLabel = needsResponse
+                ? 'Needs response'
+                : asProvider
+                  ? 'As provider'
+                  : 'As client';
+              const roleColor = needsResponse ? '#111827' : asProvider ? '#2563EB' : '#16A34A';
+              const statusConfirmed = meeting.status === 'confirmed' && !hasPendingReschedule(meeting);
               const isPendingProvider = asProvider && meeting.status === 'pending';
+              const isRescheduleResponse =
+                user?.id && isRescheduleAwaitingResponse(meeting, user.id);
 
               return (
                 <Card key={meeting.id} style={styles.meetingCard}>
@@ -243,9 +307,9 @@ export default function EmployeeScheduleScreen({
                         <Ionicons
                           name="calendar-outline"
                           size={16}
-                          color={asProvider ? '#2563EB' : '#16A34A'}
+                          color={roleColor}
                         />
-                        <Text style={styles.meetingDate}>
+                        <Text style={[styles.meetingDate, needsResponse && styles.meetingDateNeedsResponse]}>
                           {formatAppointmentTime(meeting.starts_at)} · {roleLabel}
                         </Text>
                       </View>
@@ -273,7 +337,23 @@ export default function EmployeeScheduleScreen({
                       </View>
                     </View>
                   </Pressable>
-                  {isPendingProvider ? (
+                  {isRescheduleResponse ? (
+                    <View style={styles.pendingActions}>
+                      <Button
+                        title="Decline"
+                        variant="outline"
+                        onPress={() => void handleRescheduleRespond(meeting.id, 'cancelled')}
+                        disabled={responding}
+                        style={styles.pendingBtn}
+                      />
+                      <Button
+                        title="Accept"
+                        onPress={() => void handleRescheduleRespond(meeting.id, 'confirmed')}
+                        disabled={responding}
+                        style={styles.pendingBtn}
+                      />
+                    </View>
+                  ) : isPendingProvider ? (
                     <View style={styles.pendingActions}>
                       <Button
                         title="Decline"
@@ -311,15 +391,58 @@ export default function EmployeeScheduleScreen({
           selectedAppointment ? () => messagePeer(selectedAppointment) : undefined
         }
         onAccept={
-          selectedPerspective === 'provider' && selectedAppointment?.status === 'pending'
+          selectedPerspective === 'provider' &&
+          selectedAppointment?.status === 'pending' &&
+          !hasPendingReschedule(selectedAppointment)
             ? () => void handleRespond(selectedAppointment!.id, 'confirmed')
             : undefined
         }
         onDecline={
-          selectedPerspective === 'provider' && selectedAppointment?.status === 'pending'
+          selectedPerspective === 'provider' &&
+          selectedAppointment?.status === 'pending' &&
+          !hasPendingReschedule(selectedAppointment)
             ? () => void handleRespond(selectedAppointment!.id, 'cancelled')
             : undefined
         }
+        onAcceptReschedule={
+          selectedAppointment &&
+          user?.id &&
+          isRescheduleAwaitingResponse(selectedAppointment, user.id)
+            ? () => void handleRescheduleRespond(selectedAppointment.id, 'confirmed')
+            : undefined
+        }
+        onDeclineReschedule={
+          selectedAppointment &&
+          user?.id &&
+          isRescheduleAwaitingResponse(selectedAppointment, user.id)
+            ? () => void handleRescheduleRespond(selectedAppointment.id, 'cancelled')
+            : undefined
+        }
+        onReschedule={
+          selectedAppointment &&
+          selectedAppointment.status === 'confirmed' &&
+          !hasPendingReschedule(selectedAppointment)
+            ? () => {
+                setRescheduleTarget(selectedAppointment);
+                setSelectedAppointment(null);
+              }
+            : undefined
+        }
+        onCancel={
+          selectedPerspective === 'provider' &&
+          selectedAppointment &&
+          (selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'pending')
+            ? () => handleCancelAsProvider(selectedAppointment.id)
+            : undefined
+        }
+      />
+
+      <RescheduleAppointmentModal
+        appointment={rescheduleTarget}
+        visible={rescheduleTarget !== null}
+        requestedById={user?.id ?? null}
+        onClose={() => setRescheduleTarget(null)}
+        onRescheduled={() => void loadMonth()}
       />
 
       <UserBookAppointmentModal
@@ -379,6 +502,10 @@ function createStyles(theme: AppTheme) {
     meetingDate: {
       fontFamily: theme.typography.fontFamily.medium,
       fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.textPrimary,
+    },
+    meetingDateNeedsResponse: {
+      fontFamily: theme.typography.fontFamily.semiBold,
       color: theme.colors.textPrimary,
     },
     badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: theme.borderRadius.sm },

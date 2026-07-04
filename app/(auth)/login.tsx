@@ -15,6 +15,7 @@ import { supabase } from '../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { getAuthRedirectUri } from '../../lib/authCallback';
+import { BrandLogo } from '../../components/BrandLogo';
 import { GoogleSignIn } from '../../components/GoogleSignIn';
 import type { AppTheme } from '../../constants/theme';
 import { useAppTheme } from '../../contexts/ThemeContext';
@@ -285,6 +286,7 @@ export default function LoginScreen() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
+          <BrandLogo size={120} style={styles.logo} />
           <Text style={styles.title}>{isSignUp ? 'Create an Account' : 'Welcome Back'}</Text>
           <Text style={styles.subtitle}>
             {isSignUp ? 'Sign up to get started' : 'Sign in to continue to your account'}
@@ -395,6 +397,9 @@ function createStyles(theme: AppTheme) {
       padding: theme.spacing.lg,
       justifyContent: 'center',
       paddingTop: 64,
+    },
+    logo: {
+      marginBottom: theme.spacing.lg,
     },
     title: {
       fontFamily: theme.typography.fontFamily.bold,

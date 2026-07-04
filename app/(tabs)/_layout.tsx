@@ -126,7 +126,7 @@ export default function TabLayout() {
       );
       return;
     }
-    router.push(`/profile/${profileId}`);
+    router.push({ pathname: '/profile/[id]', params: { id: profileId, returnTo: '/(tabs)' } });
   };
 
   const goTo = useCallback(

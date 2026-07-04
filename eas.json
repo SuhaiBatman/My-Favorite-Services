@@ -14,15 +14,19 @@
     "preview": {
       "distribution": "internal",
       "env": {
+        "APP_ENV": "production",
         "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_Kt1vvhB_aW_r3li_zi8_tA_9lJT-Bsn"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
+        "APP_ENV": "production",
         "EXPO_PUBLIC_SUPABASE_USE_LOCAL": "false",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oukcgzbjuajoghvnlndx.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_Kt1vvhB_aW_r3li_zi8_tA_9lJT-Bsn"
       }
     }
   },

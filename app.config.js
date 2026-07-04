@@ -2,6 +2,10 @@
 const appJson = require('./app.json');
 const { syncSupabaseEnv } = require('./scripts/write-supabase-env.cjs');
 const { loadProjectEnv, resolveProfile } = require('./scripts/load-project-env.cjs');
+const {
+  HOSTED_SUPABASE_PUBLISHABLE_KEY,
+  HOSTED_SUPABASE_URL,
+} = require('./scripts/supabase-production.cjs');
 
 const profile = resolveProfile(process.env.APP_ENV);
 process.env.APP_ENV = profile;
@@ -14,8 +18,18 @@ for (const [key, value] of Object.entries(projectEnv)) {
 }
 
 const supabaseEnv = syncSupabaseEnv({ profile, quiet: true });
-process.env.EXPO_PUBLIC_SUPABASE_URL = supabaseEnv.EXPO_PUBLIC_SUPABASE_URL;
-process.env.EXPO_PUBLIC_SUPABASE_KEY = supabaseEnv.EXPO_PUBLIC_SUPABASE_KEY;
+
+const hostedUrl =
+  supabaseEnv.EXPO_PUBLIC_SUPABASE_URL ||
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  HOSTED_SUPABASE_URL;
+const hostedKey =
+  supabaseEnv.EXPO_PUBLIC_SUPABASE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_KEY ||
+  (profile === 'production' ? HOSTED_SUPABASE_PUBLISHABLE_KEY : '');
+
+process.env.EXPO_PUBLIC_SUPABASE_URL = hostedUrl;
+process.env.EXPO_PUBLIC_SUPABASE_KEY = hostedKey;
 if (supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL) {
   process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL = supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL;
 }
@@ -54,8 +68,8 @@ module.exports = {
     extra: {
       ...appJson.expo.extra,
       // Baked from `.env.local` or `.env.production` (APP_ENV) — see scripts/run-env.mjs
-      supabaseUrl: supabaseEnv.EXPO_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey: supabaseEnv.EXPO_PUBLIC_SUPABASE_KEY,
+      supabaseUrl: hostedUrl,
+      supabaseAnonKey: hostedKey,
       supabaseUseLocal: supabaseEnv.EXPO_PUBLIC_SUPABASE_USE_LOCAL,
       googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() ?? '',
       googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '',

@@ -17,6 +17,7 @@ const WEEKDAY_LABELS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
 const MARKER_BLUE = '#2563EB';
 const MARKER_GREEN = '#16A34A';
+const MARKER_ORANGE = '#EA580C';
 const MARKER_BLACK = '#111827';
 
 type CalendarDay = {
@@ -56,9 +57,21 @@ function DayMarkerRing({
 }) {
   if (!marker && !pending) return null;
 
+  if (pending && !marker) {
+    return (
+      <View style={[stylesMarker.wrap, { backgroundColor: MARKER_ORANGE }]} />
+    );
+  }
+
   const ringStyle = pending
-    ? { borderWidth: 2, borderColor: MARKER_BLACK }
+    ? { borderWidth: 2, borderColor: MARKER_ORANGE }
     : { borderWidth: 2, borderColor: 'transparent' };
+
+  if (pending && marker === 'provider') {
+    return (
+      <View style={[stylesMarker.wrap, ringStyle, { backgroundColor: MARKER_ORANGE }]} />
+    );
+  }
 
   if (marker === 'both') {
     return (
@@ -188,7 +201,7 @@ export function ScheduleCalendar({
           <Text style={styles.legendText}>As client</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendRing, { borderColor: MARKER_BLACK }]} />
+          <View style={[styles.legendDot, { backgroundColor: MARKER_ORANGE }]} />
           <Text style={styles.legendText}>Needs response</Text>
         </View>
       </View>

@@ -11,6 +11,8 @@ export type ThemeColors = {
   success: string;
   primaryLight: string;
   messageReceived: string;
+  /** Soft accent wash for highlights */
+  accentSoft: string;
   /** Grouped list background (Messages inbox) */
   inboxBackground: string;
   /** Elevated card surface inside grouped lists */
@@ -38,68 +40,84 @@ export type ThemeColors = {
   frostedOverlay: string;
   composerBar: string;
   destructive: string;
+  /** Screen headers (Messages, etc.) */
+  headerBackground: string;
+  headerText: string;
+  headerSubtext: string;
+  /** Card shadow tint */
+  shadow: string;
 };
 
 export const lightColors: ThemeColors = {
   primary: "#0F172A",
-  secondary: "#3B82F6",
-  tertiary: "#2DD4BF",
-  background: "#F8FAFC",
+  secondary: "#0EA5E9",
+  tertiary: "#14B8A6",
+  background: "#F1F5F9",
   surface: "#FFFFFF",
   textPrimary: "#0F172A",
   textSecondary: "#64748B",
   textInverted: "#FFFFFF",
-  border: "#E2E8F0",
+  border: "#CBD5E1",
   success: "#10B981",
-  primaryLight: "#E0E7FF",
+  primaryLight: "#E0F2FE",
   messageReceived: "#F1F5F9",
-  inboxBackground: "#F2F2F7",
+  accentSoft: "#E0F2FE",
+  inboxBackground: "#E2E8F0",
   inboxSurface: "#FFFFFF",
-  inboxSearch: "#E3E3E8",
-  inboxSeparator: "#C6C6C8",
-  inboxRowPressed: "#E5E5EA",
-  bubbleSent: "#000000",
-  bubbleReceived: "#E9E9EB",
+  inboxSearch: "#CBD5E1",
+  inboxSeparator: "#CBD5E1",
+  inboxRowPressed: "#E2E8F0",
+  bubbleSent: "#0284C7",
+  bubbleReceived: "#E2E8F0",
   bubbleSentText: "#FFFFFF",
-  bubbleReceivedText: "#000000",
-  link: "#007AFF",
-  muted: "#8E8E93",
-  chevron: "#C7C7CC",
-  frostedPanel: "rgba(248,248,248,0.94)",
-  frostedOverlay: "rgba(248,248,248,0.72)",
-  composerBar: "rgba(248,248,248,0.96)",
-  destructive: "#FF3B30",
+  bubbleReceivedText: "#0F172A",
+  link: "#0284C7",
+  muted: "#94A3B8",
+  chevron: "#CBD5E1",
+  frostedPanel: "rgba(255,255,255,0.94)",
+  frostedOverlay: "rgba(241,245,249,0.88)",
+  composerBar: "#FFFFFF",
+  destructive: "#EF4444",
+  headerBackground: "#0F172A",
+  headerText: "#FFFFFF",
+  headerSubtext: "#94A3B8",
+  shadow: "#0EA5E9",
 };
 
 export const darkColors: ThemeColors = {
   primary: "#F8FAFC",
-  secondary: "#60A5FA",
+  secondary: "#38BDF8",
   tertiary: "#2DD4BF",
   background: "#0B1120",
-  surface: "#1E293B",
+  surface: "#131A2B",
   textPrimary: "#F8FAFC",
   textSecondary: "#94A3B8",
-  textInverted: "#0F172A",
-  border: "#334155",
+  textInverted: "#0B1120",
+  border: "#1E293B",
   success: "#34D399",
-  primaryLight: "#1E3A5F",
-  messageReceived: "#334155",
-  inboxBackground: "#000000",
-  inboxSurface: "#1C1C1E",
-  inboxSearch: "#2C2C2E",
-  inboxSeparator: "#38383A",
-  inboxRowPressed: "#2C2C2E",
-  bubbleSent: "#0A84FF",
-  bubbleReceived: "#3A3A3C",
+  primaryLight: "#0C4A6E",
+  messageReceived: "#1E293B",
+  accentSoft: "#0F2847",
+  inboxBackground: "#0B1120",
+  inboxSurface: "#131A2B",
+  inboxSearch: "#1E293B",
+  inboxSeparator: "#1E293B",
+  inboxRowPressed: "#1A2332",
+  bubbleSent: "#0284C7",
+  bubbleReceived: "#1E293B",
   bubbleSentText: "#FFFFFF",
-  bubbleReceivedText: "#FFFFFF",
-  link: "#0A84FF",
-  muted: "#8E8E93",
-  chevron: "#636366",
-  frostedPanel: "rgba(28,28,30,0.94)",
-  frostedOverlay: "rgba(44,44,46,0.72)",
-  composerBar: "rgba(28,28,30,0.96)",
-  destructive: "#FF453A",
+  bubbleReceivedText: "#F8FAFC",
+  link: "#38BDF8",
+  muted: "#64748B",
+  chevron: "#475569",
+  frostedPanel: "rgba(19,26,43,0.96)",
+  frostedOverlay: "rgba(11,17,32,0.85)",
+  composerBar: "#131A2B",
+  destructive: "#F87171",
+  headerBackground: "#0F172A",
+  headerText: "#F8FAFC",
+  headerSubtext: "#64748B",
+  shadow: "#000000",
 };
 
 export const typography = {

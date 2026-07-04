@@ -21,6 +21,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   createAppointment,
   listProviderAppointmentsBetween,
+  listUserUpcomingWithProvider,
   type Appointment,
 } from '../lib/appointments';
 import { listEmployeeAvailability, listEmployeeServices, type EmployeeService } from '../lib/employeeServices';
@@ -28,7 +29,7 @@ import { formatServiceDuration, formatServicePrice } from '../lib/serviceOffer';
 import { BookingCalendar } from './BookingCalendar';
 import { ServiceBookingFields } from './ServiceBookingFields';
 import { listMessageableProviders, type ProviderListItem } from '../lib/messaging';
-import { profileDisplayName } from '../lib/format';
+import { profileDisplayName, formatAppointmentDate, formatAppointmentTime } from '../lib/format';
 import type { ProviderAvailabilitySlot } from '../lib/profileSchedule';
 import {
   buildAppointmentLocation,
@@ -175,6 +176,7 @@ export function UserBookAppointmentModal({
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [appointmentCheckError, setAppointmentCheckError] = useState<string | null>(null);
+  const [existingWithProvider, setExistingWithProvider] = useState<Appointment[]>([]);
 
   const providerSelected = providerId !== null;
 
@@ -244,6 +246,7 @@ export function UserBookAppointmentModal({
       setBookedAppointments([]);
       setBookingError(null);
       setAppointmentCheckError(null);
+      setExistingWithProvider([]);
     }
   }, [visible]);
 
@@ -255,6 +258,7 @@ export function UserBookAppointmentModal({
       setBookedAppointments([]);
       setBookingError(null);
       setAppointmentCheckError(null);
+      setExistingWithProvider([]);
       return;
     }
     let cancelled = false;
@@ -262,6 +266,7 @@ export function UserBookAppointmentModal({
       setLoadingServices(true);
       setBookingError(null);
       setAppointmentCheckError(null);
+      setExistingWithProvider([]);
       try {
         const [serviceList, availability] = await Promise.all([
           listEmployeeServices(providerId),
@@ -276,6 +281,7 @@ export function UserBookAppointmentModal({
           setBookedAppointments([]);
           setBookingDetails({});
           setAppointmentCheckError(null);
+      setExistingWithProvider([]);
         }
       } catch {
         if (!cancelled) {
@@ -291,6 +297,24 @@ export function UserBookAppointmentModal({
       cancelled = true;
     };
   }, [providerId]);
+
+  useEffect(() => {
+    if (!visible || !providerId || !user?.id) {
+      setExistingWithProvider([]);
+      return;
+    }
+    let cancelled = false;
+    void listUserUpcomingWithProvider(user.id, providerId)
+      .then((rows) => {
+        if (!cancelled) setExistingWithProvider(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setExistingWithProvider([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId, user?.id, visible]);
 
   const selectedProvider = providers.find((p) => p.id === providerId);
   const selectedProviderSummary = selectedProvider ?? initialProvider;
@@ -350,6 +374,7 @@ export function UserBookAppointmentModal({
     if (!visible || !providerId || !selectedDate) {
       setBookedAppointments([]);
       setAppointmentCheckError(null);
+      setExistingWithProvider([]);
       return;
     }
 
@@ -357,6 +382,7 @@ export function UserBookAppointmentModal({
     (async () => {
       setLoadingAppointments(true);
       setAppointmentCheckError(null);
+      setExistingWithProvider([]);
       try {
         const appointments = await listProviderAppointmentsBetween(
           providerId,
@@ -557,7 +583,7 @@ export function UserBookAppointmentModal({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
+        <View style={[styles.header, { paddingTop: topInset }]}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Book appointment</Text>
             <Text style={styles.subtitle}>
@@ -585,6 +611,23 @@ export function UserBookAppointmentModal({
             >
               <Text style={styles.changeProviderText}>Change</Text>
             </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {providerSelected && existingWithProvider.length > 0 ? (
+          <View style={styles.existingBanner}>
+            <Ionicons name="information-circle-outline" size={20} color={theme.colors.secondary} />
+            <View style={styles.existingBannerText}>
+              <Text style={styles.existingBannerTitle}>
+                You already have {existingWithProvider.length} upcoming appointment
+                {existingWithProvider.length === 1 ? '' : 's'} with this provider
+              </Text>
+              <Text style={styles.existingBannerSubtitle} numberOfLines={2}>
+                Next: {formatAppointmentDate(existingWithProvider[0].starts_at)} ·{' '}
+                {formatAppointmentTime(existingWithProvider[0].starts_at)} —{' '}
+                {existingWithProvider[0].service_name}
+              </Text>
+            </View>
           </View>
         ) : null}
 
@@ -921,6 +964,30 @@ function createStyles(theme: AppTheme) {
     fontFamily: theme.typography.fontFamily.medium,
     fontSize: theme.typography.sizes.caption,
     color: theme.colors.secondary,
+  },
+  existingBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.sm,
+    marginHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.primaryLight,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  existingBannerText: { flex: 1, gap: 4 },
+  existingBannerTitle: {
+    fontFamily: theme.typography.fontFamily.semiBold,
+    fontSize: theme.typography.sizes.caption,
+    color: theme.colors.textPrimary,
+  },
+  existingBannerSubtitle: {
+    fontFamily: theme.typography.fontFamily.regular,
+    fontSize: theme.typography.sizes.caption,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
   },
   providerPickerBody: {
     flex: 1,

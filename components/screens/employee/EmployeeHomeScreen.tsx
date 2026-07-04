@@ -28,6 +28,7 @@ import {
 } from '../../../lib/format';
 import { useFavorites } from '../../../contexts/FavoritesContext';
 import { peekHomePrefetch } from '../../../lib/homePrefetch';
+import { NotificationBellButton } from '../../NotificationBellButton';
 
 const HOME_UPCOMING_PREVIEW_LIMIT = 3;
 
@@ -209,6 +210,7 @@ export default function EmployeeHomeScreen({
             <Text style={styles.headerTitle}>Home</Text>
           </View>
           <View style={styles.headerActions}>
+            <NotificationBellButton style={styles.headerBtn} />
             <TouchableOpacity
               style={styles.headerBtn}
               onPress={() => router.push('/account')}

@@ -15,7 +15,7 @@ import {
   useWindowDimensions,
   type GestureResponderEvent,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
@@ -65,6 +65,7 @@ function buildListItems(messages: Message[]): ListItem[] {
 export default function ChatScreen() {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
 
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const conversationId = typeof id === 'string' ? id : id?.[0];
@@ -241,7 +242,7 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -319,7 +320,7 @@ export default function ChatScreen() {
           }
         />
 
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           {replyTarget ? (
             <View style={styles.replyComposer}>
               <View style={styles.replyAccent} />
@@ -494,11 +495,11 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.inboxBackground,
+    backgroundColor: theme.colors.surface,
   },
   container: {
     flex: 1,
-    backgroundColor: theme.colors.inboxSurface,
+    backgroundColor: theme.colors.surface,
   },
   centered: {
     flex: 1,
@@ -642,7 +643,6 @@ function createStyles(theme: AppTheme) {
   inputContainer: {
     paddingHorizontal: 10,
     paddingTop: 8,
-    paddingBottom: 10,
     backgroundColor: theme.colors.composerBar,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.inboxSeparator,

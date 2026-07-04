@@ -1,5 +1,7 @@
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { profileDisplayName } from './format';
 import { supabase } from './supabase';
+import { subscribeToPostgresChanges, subscribeToTableChanges } from './realtimeSubscribe';
 
 export type ConversationParticipant = {
   id: string;
@@ -368,79 +370,31 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   if (error) throw error;
 }
 
-function removeExistingChannel(channelName: string) {
-  const topic = `realtime:${channelName}`;
-  const existing = supabase.getChannels().find((ch) => ch.topic === topic);
-  if (existing) {
-    void supabase.removeChannel(existing);
-  }
-}
-
 export function subscribeToMessages(
   conversationId: string,
   onInsert: (message: Message) => void
 ) {
   const channelName = `messages:${conversationId}`;
-  removeExistingChannel(channelName);
 
-  const channel = supabase
-    .channel(channelName)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conversationId}`,
-      },
-      (payload) => {
+  return subscribeToPostgresChanges(
+    channelName,
+    {
+      event: 'INSERT',
+      table: 'messages',
+      filter: `conversation_id=eq.${conversationId}`,
+      onEvent: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
         onInsert(payload.new as Message);
-      }
-    )
-    .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error(`subscribeToMessages failed for ${conversationId}`);
-      }
-    });
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+      },
+    },
+    `messages for ${conversationId}`
+  );
 }
 
 export function subscribeToConversationUpdates(participantId: string, onChange: () => void) {
-  const channelName = `conversations:participant:${participantId}`;
-  removeExistingChannel(channelName);
-
-  const channel = supabase
-    .channel(channelName)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'conversations',
-        filter: `user_id=eq.${participantId}`,
-      },
-      () => onChange()
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'conversations',
-        filter: `provider_id=eq.${participantId}`,
-      },
-      () => onChange()
-    )
-    .subscribe((status) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error(`subscribeToConversationUpdates failed for ${participantId}`);
-      }
-    });
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return subscribeToTableChanges(
+    `conversations:participant:${participantId}`,
+    'conversations',
+    onChange,
+    `conversations for ${participantId}`
+  );
 }

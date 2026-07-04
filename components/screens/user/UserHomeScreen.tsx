@@ -38,6 +38,7 @@ import {
   type FavoriteActionKey,
 } from '../../FavoriteActionsSheet';
 import { UserBookAppointmentModal } from '../../UserBookAppointmentModal';
+import { NotificationBellButton } from '../../NotificationBellButton';
 
 const HOME_UPCOMING_PREVIEW_LIMIT = 3;
 interface UserHomeScreenProps {
@@ -214,9 +215,7 @@ export default function UserHomeScreen({
             >
               <Ionicons name="person-outline" size={22} color={theme.colors.textPrimary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerBtn}>
-              <Ionicons name="notifications-outline" size={22} color={theme.colors.textPrimary} />
-            </TouchableOpacity>
+            <NotificationBellButton style={styles.headerBtn} />
           </View>
         </View>
       </SafeAreaView>

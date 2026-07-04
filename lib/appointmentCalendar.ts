@@ -1,4 +1,5 @@
 import type { Appointment } from './appointments';
+import { isRescheduleAwaitingResponse } from './appointments';
 import { localDateKey, localDateKeyFromIso } from './format';
 
 export type ScheduleDayMarker = 'provider' | 'client' | 'both';
@@ -20,14 +21,18 @@ export function buildScheduleMarkers(
     if (appt.provider_id !== employeeId) continue;
     const key = localDateKeyFromIso(appt.starts_at);
     providerDays.add(key);
-    if (appt.status === 'pending') {
+    if (appt.status === 'pending' || isRescheduleAwaitingResponse(appt, employeeId)) {
       pendingDays.add(key);
     }
   }
 
   for (const appt of asClient) {
     if (appt.user_id !== employeeId) continue;
-    clientDays.add(localDateKeyFromIso(appt.starts_at));
+    const key = localDateKeyFromIso(appt.starts_at);
+    clientDays.add(key);
+    if (isRescheduleAwaitingResponse(appt, employeeId)) {
+      pendingDays.add(key);
+    }
   }
 
   const markers: ScheduleDayMarkers = {};

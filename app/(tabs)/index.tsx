@@ -325,7 +325,7 @@ function ProviderHomeScreen({ externalModalVisible, onExternalModalClose }: Home
         onRequestClose={handleModalClose}
       >
         <View style={styles.modal}>
-          <View style={[styles.modalHeader, { paddingTop: topInset + theme.spacing.md }]}>
+          <View style={[styles.modalHeader, { paddingTop: topInset }]}>
             <Text style={styles.modalTitle}>Add a Provider</Text>
             <TouchableOpacity onPress={handleModalClose}>
               <Ionicons name="close" size={24} color={theme.colors.textPrimary} />

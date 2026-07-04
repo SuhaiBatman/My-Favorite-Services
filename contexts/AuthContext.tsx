@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { syncRealtimeAuth } from '../lib/realtimeSubscribe';
 import {
   hasRole as checkRole,
   normalizeRoles,
@@ -201,6 +202,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   useEffect(() => {
+    syncRealtimeAuth(session?.access_token ?? null);
+  }, [session?.access_token]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       const sessionUser = session?.user ?? null;
@@ -218,6 +223,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        syncRealtimeAuth(session?.access_token ?? null);
         setSession(session);
         const sessionUser = session?.user ?? null;
         setUser(sessionUser);

@@ -16,6 +16,7 @@ import { useFullScreenSheetTopInset } from '../hooks/use-full-screen-sheet-top-i
 import { Button } from './Button';
 import { ProviderAvatar } from './ProviderAvatar';
 import type { Appointment } from '../lib/appointments';
+import { hasPendingReschedule } from '../lib/appointments';
 import {
   formatAppointmentDate,
   formatAppointmentTime,
@@ -35,6 +36,10 @@ type AppointmentDetailSheetProps = {
   onMessagePeer?: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
+  onReschedule?: () => void;
+  onAcceptReschedule?: () => void;
+  onDeclineReschedule?: () => void;
+  onCancel?: () => void;
 };
 
 function getStatusStyles(theme: AppTheme): Record<
@@ -60,6 +65,10 @@ export function AppointmentDetailSheet({
   onMessagePeer,
   onAccept,
   onDecline,
+  onReschedule,
+  onAcceptReschedule,
+  onDeclineReschedule,
+  onCancel,
 }: AppointmentDetailSheetProps) {
   const { theme } = useAppTheme();
   const styles = useThemedStyles(createStyles);
@@ -77,13 +86,26 @@ export function AppointmentDetailSheet({
     ? 'Client'
     : provider?.job_title || provider?.business_name || 'Service Provider';
   const statusStyles = getStatusStyles(theme);
-  const statusStyle = statusStyles[appointment.status] ?? statusStyles.confirmed;
+  const pendingReschedule = hasPendingReschedule(appointment);
+  const statusStyle = pendingReschedule
+    ? { bg: theme.colors.primaryLight, text: theme.colors.secondary, label: 'Reschedule pending' }
+    : statusStyles[appointment.status] ?? statusStyles.confirmed;
   const location =
     appointment.location ||
     (isProviderView ? null : provider?.location);
   const viewPeer = onViewPeer ?? (onViewProvider ? () => onViewProvider(appointment.provider_id) : undefined);
   const messagePeer =
     onMessagePeer ?? (onMessageProvider ? () => onMessageProvider(appointment.provider_id) : undefined);
+
+  const handleViewPeer = () => {
+    onClose();
+    viewPeer?.();
+  };
+
+  const handleMessagePeer = () => {
+    onClose();
+    messagePeer?.();
+  };
 
   return (
     <Modal
@@ -93,7 +115,7 @@ export function AppointmentDetailSheet({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
+        <View style={[styles.header, { paddingTop: topInset }]}>
           <Text style={styles.headerTitle}>Appointment</Text>
           <TouchableOpacity onPress={onClose} hitSlop={12}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
@@ -115,7 +137,22 @@ export function AppointmentDetailSheet({
             Duration: {formatDurationMinutes(appointment.starts_at, appointment.ends_at)}
           </Text>
 
-          <Pressable style={styles.providerCard} onPress={viewPeer}>
+          {pendingReschedule && appointment.reschedule_starts_at ? (
+            <View style={styles.rescheduleCard}>
+              <Ionicons name="time-outline" size={20} color={theme.colors.secondary} />
+              <View style={styles.detailText}>
+                <Text style={styles.detailLabel}>
+                  {isProviderView ? 'Proposed new time' : 'Requested new time'}
+                </Text>
+                <Text style={styles.detailValue}>
+                  {formatAppointmentDate(appointment.reschedule_starts_at)} ·{' '}
+                  {formatAppointmentTime(appointment.reschedule_starts_at)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          <Pressable style={styles.providerCard} onPress={viewPeer ? handleViewPeer : undefined}>
             <ProviderAvatar name={peerName} size={52} />
             <View style={styles.providerInfo}>
               <Text style={styles.providerName}>{peerName}</Text>
@@ -140,13 +177,30 @@ export function AppointmentDetailSheet({
             <View style={styles.detailRow}>
               <Ionicons name="document-text-outline" size={20} color={theme.colors.secondary} />
               <View style={styles.detailText}>
-                <Text style={styles.detailLabel}>Your notes</Text>
+                <Text style={styles.detailLabel}>
+                  {isProviderView ? 'Client notes' : 'Your notes'}
+                </Text>
                 <Text style={styles.detailValue}>{appointment.notes}</Text>
               </View>
             </View>
           ) : null}
 
           <View style={styles.actions}>
+            {onAcceptReschedule && onDeclineReschedule ? (
+              <View style={styles.respondRow}>
+                <Button
+                  title="Decline reschedule"
+                  variant="outline"
+                  onPress={onDeclineReschedule}
+                  style={styles.respondBtn}
+                />
+                <Button
+                  title="Accept reschedule"
+                  onPress={onAcceptReschedule}
+                  style={styles.respondBtn}
+                />
+              </View>
+            ) : null}
             {onAccept && onDecline ? (
               <View style={styles.respondRow}>
                 <Button title="Decline" variant="outline" onPress={onDecline} style={styles.respondBtn} />
@@ -157,15 +211,21 @@ export function AppointmentDetailSheet({
               <Button
                 title={isProviderView ? 'View client' : 'View provider'}
                 variant="outline"
-                onPress={viewPeer}
+                onPress={handleViewPeer}
               />
             ) : null}
             {messagePeer ? (
               <Button
                 title={isProviderView ? 'Message client' : 'Message provider'}
-                onPress={messagePeer}
+                onPress={handleMessagePeer}
                 style={styles.messageBtn}
               />
+            ) : null}
+            {onReschedule ? (
+              <Button title="Reschedule" variant="outline" onPress={onReschedule} />
+            ) : null}
+            {onCancel ? (
+              <Button title="Cancel appointment" variant="destructive" onPress={onCancel} />
             ) : null}
           </View>
         </ScrollView>
@@ -227,6 +287,16 @@ function createStyles(theme: AppTheme) {
     fontSize: theme.typography.sizes.subbody,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.lg,
+  },
+  rescheduleCard: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.primaryLight,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   providerCard: {
     flexDirection: 'row',

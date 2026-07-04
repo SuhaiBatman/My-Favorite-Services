@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Pressable,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,8 +20,9 @@ import { Card } from '../../Card';
 import { ProviderAvatar } from '../../ProviderAvatar';
 import { AppointmentDetailSheet } from '../../AppointmentDetailSheet';
 import { UserBookAppointmentModal } from '../../UserBookAppointmentModal';
+import { RescheduleAppointmentModal } from '../../RescheduleAppointmentModal';
 import { useAuth } from '../../../contexts/AuthContext';
-import { listUserUpcomingAppointments, type Appointment } from '../../../lib/appointments';
+import { listUserUpcomingAppointments, subscribeToAppointmentUpdates, hasPendingReschedule, isRescheduleAwaitingResponse, respondToReschedule, type Appointment } from '../../../lib/appointments';
 import { getOrCreateConversation } from '../../../lib/messaging';
 import {
   formatAppointmentDate,
@@ -47,6 +49,7 @@ export default function UserScheduleScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [bookModalVisible, setBookModalVisible] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
   useEffect(() => {
     if (externalModalVisible) {
       setBookModalVisible(true);
@@ -78,6 +81,13 @@ export default function UserScheduleScreen({
     }, [load])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      return subscribeToAppointmentUpdates(user.id, load);
+    }, [user?.id, load])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
     await load();
@@ -85,7 +95,8 @@ export default function UserScheduleScreen({
   };
 
   const openProvider = (providerId: string) => {
-    router.push(`/profile/${providerId}`);
+    setSelectedAppointment(null);
+    router.push({ pathname: '/profile/[id]', params: { id: providerId, returnTo: '/schedule' } });
   };
 
   const messageProvider = async (providerId: string) => {
@@ -95,6 +106,19 @@ export default function UserScheduleScreen({
       router.push(`/chat/${conversationId}`);
     } catch {
       openProvider(providerId);
+    }
+  };
+
+  const handleRescheduleRespond = async (
+    appointmentId: string,
+    decision: 'confirmed' | 'cancelled'
+  ) => {
+    try {
+      await respondToReschedule(appointmentId, decision);
+      setSelectedAppointment(null);
+      await load();
+    } catch {
+      Alert.alert('Error', 'Could not update the reschedule request. Please try again.');
     }
   };
 
@@ -137,7 +161,10 @@ export default function UserScheduleScreen({
                 meeting.provider?.job_title ||
                 meeting.provider?.business_name ||
                 'Service Provider';
-              const statusConfirmed = meeting.status === 'confirmed';
+              const statusConfirmed = meeting.status === 'confirmed' && !hasPendingReschedule(meeting);
+              const statusLabel = hasPendingReschedule(meeting)
+                ? 'Reschedule pending'
+                : meeting.status.charAt(0).toUpperCase() + meeting.status.slice(1);
 
               return (
                 <Pressable key={meeting.id} onPress={() => setSelectedAppointment(meeting)}>
@@ -161,7 +188,7 @@ export default function UserScheduleScreen({
                             statusConfirmed ? styles.badgeTextConfirmed : styles.badgeTextPending,
                           ]}
                         >
-                          {meeting.status.charAt(0).toUpperCase() + meeting.status.slice(1)}
+                          {statusLabel}
                         </Text>
                       </View>
                     </View>
@@ -208,6 +235,37 @@ export default function UserScheduleScreen({
         onClose={() => setSelectedAppointment(null)}
         onViewProvider={openProvider}
         onMessageProvider={messageProvider}
+        onReschedule={
+          selectedAppointment?.status === 'confirmed' &&
+          !hasPendingReschedule(selectedAppointment)
+            ? () => {
+                setRescheduleTarget(selectedAppointment);
+                setSelectedAppointment(null);
+              }
+            : undefined
+        }
+        onAcceptReschedule={
+          selectedAppointment &&
+          user?.id &&
+          isRescheduleAwaitingResponse(selectedAppointment, user.id)
+            ? () => void handleRescheduleRespond(selectedAppointment.id, 'confirmed')
+            : undefined
+        }
+        onDeclineReschedule={
+          selectedAppointment &&
+          user?.id &&
+          isRescheduleAwaitingResponse(selectedAppointment, user.id)
+            ? () => void handleRescheduleRespond(selectedAppointment.id, 'cancelled')
+            : undefined
+        }
+      />
+
+      <RescheduleAppointmentModal
+        appointment={rescheduleTarget}
+        visible={rescheduleTarget !== null}
+        requestedById={user?.id ?? null}
+        onClose={() => setRescheduleTarget(null)}
+        onRescheduled={load}
       />
 
       <UserBookAppointmentModal

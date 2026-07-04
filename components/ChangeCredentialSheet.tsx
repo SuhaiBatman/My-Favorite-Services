@@ -344,7 +344,7 @@ export function ChangeCredentialSheet({
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
+        <View style={[styles.header, { paddingTop: topInset }]}>
           <TouchableOpacity onPress={handleClose} disabled={loading}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
           </TouchableOpacity>

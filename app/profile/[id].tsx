@@ -58,7 +58,7 @@ export default function ProviderProfileScreen() {
   const styles = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
 
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const router = useRouter();
   const { user, session } = useAuth();
   const { isFavorite: isProviderFavorite, addFavorite: addToFavorites } = useFavorites();
@@ -73,6 +73,19 @@ export default function ProviderProfileScreen() {
   const [serviceOffers, setServiceOffers] = useState<ServiceOffer[]>([]);
 
   const profileId = typeof id === 'string' ? id : id?.[0];
+  const backTarget = typeof returnTo === 'string' ? returnTo : returnTo?.[0];
+
+  const handleBack = () => {
+    if (backTarget) {
+      router.replace(backTarget as never);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
   const isOwnProfile = Boolean(user?.id && profileId && user.id === profileId);
 
   const loadProfile = useCallback(async () => {
@@ -172,7 +185,7 @@ export default function ProviderProfileScreen() {
   };
 
   const handleFloatingAction = () => {
-    if (profile?.is_favorite) {
+    if (isFavorite) {
       handleBook();
     } else {
       void handleAddToFavorites();
@@ -256,7 +269,7 @@ export default function ProviderProfileScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.textInverted} />
           </TouchableOpacity>
         </View>
@@ -278,7 +291,7 @@ export default function ProviderProfileScreen() {
       >
         <View style={styles.hero}>
           <View style={[styles.heroBar, { paddingTop: insets.top }]}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color={theme.colors.textInverted} />
             </TouchableOpacity>
             {isOwnProfile ? (

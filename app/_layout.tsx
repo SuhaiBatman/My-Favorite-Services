@@ -14,7 +14,9 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { FavoritesProvider } from '../contexts/FavoritesContext';
+import { NotificationsProvider } from '../contexts/NotificationsContext';
 import { OnboardingCelebrationProvider, useOnboardingCelebration } from '../contexts/OnboardingCelebrationContext';
+import { BrandLogo } from '../components/BrandLogo';
 import { OnboardingCompleteOverlay } from '../components/OnboardingCompleteOverlay';
 import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
 import { DEV_USER_IDS } from '../constants/dev';
@@ -157,14 +159,21 @@ function InitialLayout({ fontsReady }: { fontsReady: boolean }) {
           <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="p/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </NavThemeProvider>
       {!isRouteReady && (
         <View
           pointerEvents="auto"
-          style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.background }]}
-        />
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.splashOverlay,
+            { backgroundColor: isDark ? SPLASH_BACKGROUND_DARK : SPLASH_BACKGROUND_LIGHT },
+          ]}
+        >
+          <BrandLogo size={280} />
+        </View>
       )}
       {celebration ? (
         <View style={styles.celebrationLayer} pointerEvents="box-none">
@@ -180,8 +189,17 @@ function InitialLayout({ fontsReady }: { fontsReady: boolean }) {
   );
 }
 
+const SPLASH_BACKGROUND_LIGHT = '#FFFFFF';
+const SPLASH_BACKGROUND_DARK = '#0B1120';
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  splashOverlay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+    elevation: 50,
+  },
   celebrationLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 100,
@@ -207,9 +225,11 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <FavoritesProvider>
-          <OnboardingCelebrationProvider>
-            <InitialLayout fontsReady={fontsReady} />
-          </OnboardingCelebrationProvider>
+          <NotificationsProvider>
+            <OnboardingCelebrationProvider>
+              <InitialLayout fontsReady={fontsReady} />
+            </OnboardingCelebrationProvider>
+          </NotificationsProvider>
         </FavoritesProvider>
       </AuthProvider>
     </ThemeProvider>

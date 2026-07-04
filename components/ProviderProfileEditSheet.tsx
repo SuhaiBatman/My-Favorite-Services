@@ -166,7 +166,7 @@ export function ProviderProfileEditSheet({
       onRequestClose={onClose}
     >
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
+        <View style={[styles.header, { paddingTop: topInset }]}>
           <Text style={styles.title}>Edit profile</Text>
           <TouchableOpacity onPress={onClose} disabled={saving}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />

@@ -19,7 +19,6 @@ import * as Haptics from 'expo-haptics';
 import type { AppTheme } from '../../../constants/theme';
 import { useAppTheme } from '../../../contexts/ThemeContext';
 import { useThemedStyles } from '../../../hooks/use-themed-styles';
-import { Card } from '../../Card';
 import { ProviderAvatar } from '../../ProviderAvatar';
 import { NewMessageSheet } from '../../NewMessageSheet';
 import {
@@ -312,43 +311,49 @@ export default function UserMessagesScreen({
         onPress={() => openConversation(conversation.id)}
         onLongPress={(event) => openConversationActions(conversation, event)}
         delayLongPress={360}
+        style={({ pressed }) => [
+          styles.messageRow,
+          isUnread && styles.messageRowUnread,
+          pressed && styles.messageRowPressed,
+        ]}
       >
-        <Card style={styles.messageCard} variant="outlined">
-          <ProviderAvatar name={name} size={48} />
-          <View style={styles.messageContent}>
-            <View style={styles.messageHeader}>
-              <View style={styles.nameRow}>
-                <Text
-                  style={[styles.messageName, isUnread && styles.messageNameUnread]}
-                  numberOfLines={1}
-                >
-                  {name}
-                </Text>
-                {inboxFlags?.is_muted ? (
-                  <Ionicons
-                    name="notifications-off-outline"
-                    size={14}
-                    color={theme.colors.textSecondary}
-                    style={styles.rowIcon}
-                  />
-                ) : null}
-              </View>
-              <Text style={[styles.messageTime, isUnread && styles.messageTimeUnread]}>
-                {formatRelativeTime(conversation.last_message_at || conversation.updated_at)}
-              </Text>
-            </View>
-            <View style={styles.messageFooter}>
+        {isUnread ? <View style={styles.unreadAccent} /> : null}
+        <ProviderAvatar name={name} size={52} />
+        <View style={styles.messageContent}>
+          <View style={styles.messageHeader}>
+            <View style={styles.nameRow}>
               <Text
-                style={[styles.messageText, isUnread && styles.messageTextUnread]}
-                numberOfLines={2}
+                style={[styles.messageName, isUnread && styles.messageNameUnread]}
+                numberOfLines={1}
               >
-                {conversation.last_message_body || 'No messages yet'}
+                {name}
               </Text>
-              {isUnread ? <View style={styles.unreadDot} /> : null}
+              {inboxFlags?.is_muted ? (
+                <Ionicons
+                  name="notifications-off-outline"
+                  size={14}
+                  color={theme.colors.muted}
+                  style={styles.rowIcon}
+                />
+              ) : null}
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-        </Card>
+          <View style={styles.messageFooter}>
+            <Text
+              style={[styles.messageText, isUnread && styles.messageTextUnread]}
+              numberOfLines={2}
+            >
+              {conversation.last_message_body || 'No messages yet'}
+            </Text>
+            {isUnread ? <View style={styles.unreadDot} /> : null}
+          </View>
+        </View>
+        <View style={styles.messageTrailing}>
+          <Text style={[styles.messageTime, isUnread && styles.messageTimeUnread]}>
+            {formatRelativeTime(conversation.last_message_at || conversation.updated_at)}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.chevron} />
+        </View>
       </Pressable>
     );
   };
@@ -357,10 +362,20 @@ export default function UserMessagesScreen({
     <View style={styles.container}>
       <SafeAreaView style={styles.headerSafeArea} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Messages</Text>
-          <Text style={styles.headerSubtitle}>
-            {inboxCount} conversation{inboxCount === 1 ? '' : 's'}
-          </Text>
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={styles.headerTitle}>Messages</Text>
+              <Text style={styles.headerSubtitle}>
+                {inboxCount} conversation{inboxCount === 1 ? '' : 's'}
+              </Text>
+            </View>
+            {inboxCount > 0 ? (
+              <View style={styles.headerBadge}>
+                <Ionicons name="chatbubbles" size={14} color={theme.colors.headerText} />
+                <Text style={styles.headerBadgeText}>{inboxCount}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </SafeAreaView>
 
@@ -415,51 +430,63 @@ export default function UserMessagesScreen({
             })}
           </ScrollView>
 
-          {pinnedConversations.length > 0 ? (
+          {filter !== 'archived' ? (
             <View style={styles.pinnedSection}>
               <Text style={styles.sectionTitle}>Pinned</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pinnedScroll}
-              >
-                {pinnedConversations.map((conversation) => {
-                  const name = profileDisplayName(
-                    conversation.provider?.first_name,
-                    conversation.provider?.last_name
-                  );
-                  const isUnread = isConversationUnread(conversation);
-                  return (
-                    <Pressable
-                      key={conversation.id}
-                      onPress={() => openConversation(conversation.id)}
-                      onLongPress={(event) => openConversationActions(conversation, event)}
-                      delayLongPress={360}
-                    >
-                      <Card style={styles.pinnedCard} variant="outlined">
-                        <View style={styles.pinnedAvatarWrap}>
-                          <ProviderAvatar name={name} size={52} />
-                          {isUnread ? <View style={styles.pinnedUnreadDot} /> : null}
+              {pinnedConversations.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pinnedScroll}
+                >
+                  {pinnedConversations.map((conversation) => {
+                    const name = profileDisplayName(
+                      conversation.provider?.first_name,
+                      conversation.provider?.last_name
+                    );
+                    const isUnread = isConversationUnread(conversation);
+                    return (
+                      <Pressable
+                        key={conversation.id}
+                        onPress={() => openConversation(conversation.id)}
+                        onLongPress={(event) => openConversationActions(conversation, event)}
+                        delayLongPress={360}
+                        style={({ pressed }) => [styles.pinnedCardWrap, pressed && styles.pinnedCardPressed]}
+                      >
+                        <View style={[styles.pinnedCard, isUnread && styles.pinnedCardUnread]}>
+                          <View style={styles.pinnedAvatarWrap}>
+                            <ProviderAvatar name={name} size={52} />
+                            {isUnread ? <View style={styles.pinnedUnreadDot} /> : null}
+                          </View>
+                          <Text style={styles.pinnedName} numberOfLines={2}>
+                            {name}
+                          </Text>
                         </View>
-                        <Text style={styles.pinnedName} numberOfLines={2}>
-                          {name}
-                        </Text>
-                      </Card>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <View style={styles.pinnedEmpty}>
+                  <Ionicons name="pin-outline" size={18} color={theme.colors.muted} />
+                  <Text style={styles.pinnedEmptyText}>
+                    Long-press a conversation to pin it here
+                  </Text>
+                </View>
+              )}
             </View>
           ) : null}
 
           {pinnedConversations.length === 0 && listConversations.length === 0 ? (
-            <Card style={styles.emptyCard} variant="outlined">
-              <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.border} />
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="chatbubbles-outline" size={36} color={theme.colors.secondary} />
+              </View>
               <Text style={styles.emptyTitle}>No conversations yet</Text>
               <Text style={styles.emptySubtitle}>
                 Tap the compose button in the tab bar to message a provider.
               </Text>
-            </Card>
+            </View>
           ) : listConversations.length > 0 ? (
             <View style={styles.listSection}>
               {pinnedConversations.length > 0 ? (
@@ -500,28 +527,48 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme.colors.background,
+      backgroundColor: theme.colors.inboxBackground,
     },
     headerSafeArea: {
-      backgroundColor: theme.colors.surface,
+      backgroundColor: theme.colors.headerBackground,
       paddingHorizontal: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
+      paddingBottom: theme.spacing.lg,
     },
     header: {
       paddingTop: theme.spacing.md,
     },
+    headerTopRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
     headerTitle: {
       fontFamily: theme.typography.fontFamily.bold,
-      fontSize: theme.typography.sizes.h1,
-      color: theme.colors.textPrimary,
+      fontSize: 32,
+      color: theme.colors.headerText,
+      letterSpacing: -0.5,
     },
     headerSubtitle: {
-      fontFamily: theme.typography.fontFamily.regular,
-      fontSize: theme.typography.sizes.caption,
-      color: theme.colors.textSecondary,
+      fontFamily: theme.typography.fontFamily.medium,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.headerSubtext,
       marginTop: 4,
+    },
+    headerBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: theme.borderRadius.full,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.15)',
+    },
+    headerBadgeText: {
+      fontFamily: theme.typography.fontFamily.semiBold,
+      fontSize: theme.typography.sizes.caption,
+      color: theme.colors.headerText,
     },
     centered: {
       flex: 1,
@@ -529,19 +576,23 @@ function createStyles(theme: AppTheme) {
       justifyContent: 'center',
     },
     scroll: {
-      padding: theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.md,
     },
     searchBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      borderRadius: theme.borderRadius.md,
+      backgroundColor: theme.colors.inboxSurface,
+      borderRadius: theme.borderRadius.full,
       paddingHorizontal: theme.spacing.md,
-      paddingVertical: 12,
+      paddingVertical: 14,
       marginBottom: theme.spacing.md,
       gap: theme.spacing.sm,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 12,
+      elevation: 3,
     },
     searchInput: {
       flex: 1,
@@ -552,37 +603,44 @@ function createStyles(theme: AppTheme) {
     },
     filtersScroll: {
       gap: theme.spacing.sm,
-      marginBottom: theme.spacing.md,
+      marginBottom: theme.spacing.lg,
+      paddingRight: theme.spacing.sm,
     },
     filterPill: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
       borderRadius: theme.borderRadius.full,
-      borderWidth: 1,
     },
     filterPillActive: {
-      backgroundColor: theme.colors.textPrimary,
-      borderColor: theme.colors.textPrimary,
+      backgroundColor: theme.colors.secondary,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      elevation: 4,
     },
     filterPillInactive: {
-      backgroundColor: theme.colors.surface,
+      backgroundColor: theme.colors.inboxSurface,
+      borderWidth: 1,
       borderColor: theme.colors.border,
     },
     filterTextActive: {
       color: theme.colors.textInverted,
-      fontFamily: theme.typography.fontFamily.medium,
+      fontFamily: theme.typography.fontFamily.semiBold,
       fontSize: theme.typography.sizes.subbody,
     },
     filterTextInactive: {
-      color: theme.colors.textPrimary,
+      color: theme.colors.textSecondary,
       fontFamily: theme.typography.fontFamily.medium,
       fontSize: theme.typography.sizes.subbody,
     },
     sectionTitle: {
       fontFamily: theme.typography.fontFamily.semiBold,
-      fontSize: theme.typography.sizes.title,
-      color: theme.colors.textPrimary,
+      fontSize: theme.typography.sizes.caption,
+      color: theme.colors.muted,
       marginBottom: theme.spacing.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
     },
     pinnedSection: {
       marginBottom: theme.spacing.lg,
@@ -590,12 +648,31 @@ function createStyles(theme: AppTheme) {
     pinnedScroll: {
       gap: theme.spacing.sm,
     },
+    pinnedCardWrap: {
+      borderRadius: theme.borderRadius.lg,
+    },
+    pinnedCardPressed: {
+      opacity: 0.88,
+    },
     pinnedCard: {
-      width: 96,
+      width: 100,
       alignItems: 'center',
       paddingVertical: theme.spacing.md,
       paddingHorizontal: theme.spacing.sm,
       gap: theme.spacing.sm,
+      backgroundColor: theme.colors.inboxSurface,
+      borderRadius: theme.borderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    pinnedCardUnread: {
+      borderColor: theme.colors.secondary,
+      backgroundColor: theme.colors.accentSoft,
     },
     pinnedAvatarWrap: {
       position: 'relative',
@@ -609,33 +686,75 @@ function createStyles(theme: AppTheme) {
       borderRadius: 6,
       backgroundColor: theme.colors.secondary,
       borderWidth: 2,
-      borderColor: theme.colors.surface,
+      borderColor: theme.colors.inboxSurface,
     },
     pinnedName: {
-      fontFamily: theme.typography.fontFamily.medium,
+      fontFamily: theme.typography.fontFamily.semiBold,
       fontSize: theme.typography.sizes.caption,
       color: theme.colors.textPrimary,
       textAlign: 'center',
     },
+    pinnedEmpty: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      backgroundColor: theme.colors.inboxSurface,
+      borderRadius: theme.borderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderStyle: 'dashed',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+    },
+    pinnedEmptyText: {
+      flex: 1,
+      fontFamily: theme.typography.fontFamily.regular,
+      fontSize: theme.typography.sizes.subbody,
+      color: theme.colors.muted,
+    },
     listSection: {
       gap: theme.spacing.sm,
     },
-    messageCard: {
+    messageRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: theme.spacing.md,
       padding: theme.spacing.md,
       marginBottom: theme.spacing.sm,
+      backgroundColor: theme.colors.inboxSurface,
+      borderRadius: theme.borderRadius.lg,
+      overflow: 'hidden',
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    messageRowUnread: {
+      backgroundColor: theme.colors.accentSoft,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    messageRowPressed: {
+      backgroundColor: theme.colors.inboxRowPressed,
+    },
+    unreadAccent: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 4,
+      backgroundColor: theme.colors.secondary,
+      borderTopLeftRadius: theme.borderRadius.lg,
+      borderBottomLeftRadius: theme.borderRadius.lg,
     },
     messageContent: {
       flex: 1,
     },
     messageHeader: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: 4,
-      gap: theme.spacing.sm,
     },
     nameRow: {
       flex: 1,
@@ -653,16 +772,23 @@ function createStyles(theme: AppTheme) {
       color: theme.colors.textPrimary,
     },
     messageNameUnread: {
-      fontFamily: theme.typography.fontFamily.semiBold,
+      fontFamily: theme.typography.fontFamily.bold,
+      color: theme.colors.textPrimary,
     },
     messageTime: {
       fontFamily: theme.typography.fontFamily.regular,
-      fontSize: theme.typography.sizes.caption,
-      color: theme.colors.textSecondary,
+      fontSize: 11,
+      color: theme.colors.muted,
     },
     messageTimeUnread: {
       color: theme.colors.secondary,
-      fontFamily: theme.typography.fontFamily.medium,
+      fontFamily: theme.typography.fontFamily.semiBold,
+    },
+    messageTrailing: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      alignSelf: 'center',
     },
     messageFooter: {
       flexDirection: 'row',
@@ -673,27 +799,41 @@ function createStyles(theme: AppTheme) {
     messageText: {
       fontFamily: theme.typography.fontFamily.regular,
       fontSize: theme.typography.sizes.subbody,
-      color: theme.colors.textSecondary,
+      color: theme.colors.muted,
       flex: 1,
+      lineHeight: 20,
     },
     messageTextUnread: {
       fontFamily: theme.typography.fontFamily.medium,
       color: theme.colors.textPrimary,
     },
     unreadDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
+      width: 9,
+      height: 9,
+      borderRadius: 5,
       backgroundColor: theme.colors.secondary,
     },
     emptyCard: {
       alignItems: 'center',
       padding: theme.spacing.xl,
       gap: theme.spacing.sm,
+      backgroundColor: theme.colors.inboxSurface,
+      borderRadius: theme.borderRadius.xl,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    emptyIconWrap: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: theme.colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: theme.spacing.sm,
     },
     emptyTitle: {
       fontFamily: theme.typography.fontFamily.semiBold,
-      fontSize: theme.typography.sizes.body,
+      fontSize: theme.typography.sizes.title,
       color: theme.colors.textPrimary,
     },
     emptySubtitle: {
@@ -701,6 +841,7 @@ function createStyles(theme: AppTheme) {
       fontSize: theme.typography.sizes.subbody,
       color: theme.colors.textSecondary,
       textAlign: 'center',
+      lineHeight: 22,
     },
     bottomSpacer: {
       height: 110,

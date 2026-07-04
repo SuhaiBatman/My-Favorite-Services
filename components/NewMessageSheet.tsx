@@ -90,7 +90,7 @@ export function NewMessageSheet({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: topInset + theme.spacing.md }]}>
+        <View style={[styles.header, { paddingTop: topInset }]}>
           <Text style={styles.title}>{title}</Text>
           <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={24} color={theme.colors.textPrimary} />

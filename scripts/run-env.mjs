@@ -11,6 +11,7 @@ import { spawn, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { createRequire } from 'module';
 import { syncLanHost, startLanWatch } from './lan-host.mjs';
+import { parseDeviceArg, resolveMetroHost } from './lib/metro-host.mjs';
 
 const require = createRequire(import.meta.url);
 const { syncSupabaseEnv } = require('./write-supabase-env.cjs');
@@ -95,6 +96,23 @@ let stopWatch = () => {};
 if (command === 'start' && profile === 'local') {
   stopWatch = startLanWatch({ intervalMs: 3000 });
 }
+
+function configureMetroHost() {
+  if (command !== 'ios' && command !== 'android') return;
+
+  const device = parseDeviceArg(extraArgs);
+  const metroHost = resolveMetroHost({
+    device,
+    // Default `expo run:ios` targets the simulator — localhost, not tethering IPs like 192.0.0.2.
+    preferSimulator: command === 'ios' && !device,
+  });
+
+  process.env.REACT_NATIVE_PACKAGER_HOSTNAME = metroHost;
+  process.env.RCT_METRO_PORT = process.env.RCT_METRO_PORT || '8081';
+  console.log(`[metro] REACT_NATIVE_PACKAGER_HOSTNAME=${metroHost}`);
+}
+
+configureMetroHost();
 
 const expoArgs =
   command === 'start' ? ['start', ...extraArgs] : [`run:${command}`, ...extraArgs];

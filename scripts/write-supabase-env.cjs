@@ -46,7 +46,11 @@ export const SUPABASE_USE_LOCAL = ${JSON.stringify(env.EXPO_PUBLIC_SUPABASE_USE_
 }
 
 if (require.main === module) {
-  const profile = process.argv[2] || process.env.APP_ENV || 'local';
+  const profile =
+    process.argv[2] ||
+    process.env.APP_ENV ||
+    process.env.EAS_BUILD_PROFILE ||
+    'local';
   process.env.APP_ENV = resolveProfile(profile);
   syncSupabaseEnv({ profile: process.env.APP_ENV });
 }

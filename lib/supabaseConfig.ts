@@ -5,6 +5,10 @@ import {
   LOCAL_SUPABASE_HOST,
 } from '../constants/localSupabaseHost';
 import {
+  HOSTED_SUPABASE_PUBLISHABLE_KEY,
+  HOSTED_SUPABASE_URL,
+} from '../constants/supabaseProduction';
+import {
   SUPABASE_ANON_KEY as BAKED_ANON_KEY,
   SUPABASE_URL as BAKED_URL,
   SUPABASE_USE_LOCAL as BAKED_USE_LOCAL,
@@ -17,18 +21,94 @@ export const LOCAL_SUPABASE_API_PORT = 54321;
 export const LOCAL_DEMO_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-/** Baked env from app.config / postinstall; beats Metro .env.local overrides. */
+type SupabaseExtra = {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  supabaseUseLocal?: string;
+};
+
+function expoExtra(): SupabaseExtra | undefined {
+  return Constants.expoConfig?.extra as SupabaseExtra | undefined;
+}
+
+function isLocalHostUrl(url: string): boolean {
+  return (
+    url.includes('127.0.0.1') ||
+    url.includes('localhost') ||
+    url.includes('10.0.2.2')
+  );
+}
+
+function isHostedUrl(url: string): boolean {
+  return url.includes('.supabase.co');
+}
+
+function pickHostedUrl(candidates: string[]): string {
+  return candidates.find((url) => url && isHostedUrl(url)) ?? '';
+}
+
+function pickClientKey(candidates: string[]): string {
+  return (
+    candidates.find(
+      (key) =>
+        key &&
+        !isLocalDemoAnonKey(key) &&
+        (key.startsWith('sb_publishable_') || key.startsWith('eyJ'))
+    ) ?? ''
+  );
+}
+
+/** Resolve URL/key for the active runtime (dev vs store/TestFlight). */
 function envUrl(): string {
-  return BAKED_URL.trim() || process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() || '';
+  const extra = expoExtra();
+  const candidates = [
+    extra?.supabaseUrl?.trim(),
+    BAKED_URL.trim(),
+    process.env.EXPO_PUBLIC_SUPABASE_URL?.trim(),
+  ].filter(Boolean) as string[];
+
+  if (!__DEV__) {
+    return (
+      pickHostedUrl(candidates) ||
+      HOSTED_SUPABASE_URL
+    );
+  }
+
+  const url = candidates[0] ?? '';
+  if (url && !isLocalHostUrl(url)) {
+    return url;
+  }
+  return url;
 }
 
 function envKey(): string {
-  return BAKED_ANON_KEY.trim() || process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim() || '';
+  const extra = expoExtra();
+  const candidates = [
+    extra?.supabaseAnonKey?.trim(),
+    BAKED_ANON_KEY.trim(),
+    process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim(),
+  ].filter(Boolean) as string[];
+
+  if (!__DEV__) {
+    return (
+      pickClientKey(candidates) ||
+      HOSTED_SUPABASE_PUBLISHABLE_KEY
+    );
+  }
+
+  return candidates[0] ?? '';
 }
 
 function envUseLocalFlag(): string {
+  if (!__DEV__) {
+    return 'false';
+  }
+
   return (
-    BAKED_USE_LOCAL.trim() || process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL?.trim() || ''
+    expoExtra()?.supabaseUseLocal?.trim() ||
+    BAKED_USE_LOCAL.trim() ||
+    process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL?.trim() ||
+    ''
   );
 }
 
@@ -62,17 +142,6 @@ export function describeSupabaseKey(key: string): string {
   return 'unknown';
 }
 
-/**
- * Resolves the Supabase API URL for the current runtime.
- *
- * Local dev (`EXPO_PUBLIC_SUPABASE_USE_LOCAL=true` in `.env.local`):
- * - LAN IP is auto-detected on your Mac via `scripts/lan-host.mjs` (updates on Wi‑Fi change).
- * - iOS Simulator → 127.0.0.1
- * - Android Emulator → 10.0.2.2
- * - Physical device / Expo Go on phone → Mac LAN IP from generated file
- *
- * Production: use `.env.production` via `npm run android:prod` (see scripts/run-env.mjs).
- */
 export function resolveSupabaseUrl(): string {
   const url = envUrl();
   const useLocal = shouldUseLocalSupabase(url);

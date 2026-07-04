@@ -13,15 +13,15 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     container: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.borderRadius.md,
+      borderRadius: theme.borderRadius.lg,
       padding: theme.spacing.md,
     },
     elevated: {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      elevation: 2,
+      shadowColor: theme.colors.shadow,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 3,
     },
     outlined: {
       borderWidth: 1,

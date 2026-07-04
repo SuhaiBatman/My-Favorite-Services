@@ -30,6 +30,11 @@ function parseEnvFile(filePath) {
 
 function resolveProfile(profile = process.env.APP_ENV) {
   if (profile === 'production') return 'production';
+  // EAS Build sets EAS_BUILD_PROFILE but not APP_ENV unless configured in eas.json.
+  const easProfile = process.env.EAS_BUILD_PROFILE;
+  if (easProfile === 'production' || easProfile === 'preview') {
+    return 'production';
+  }
   return 'local';
 }
 
@@ -46,10 +51,14 @@ function loadProjectEnv(profile = process.env.APP_ENV) {
 
 function resolveSupabaseEnv(profile = process.env.APP_ENV) {
   const env = loadProjectEnv(profile);
+  // EAS injects EXPO_PUBLIC_* via eas.json / dashboard; .env.production is not on build servers.
   return {
-    EXPO_PUBLIC_SUPABASE_URL: env.EXPO_PUBLIC_SUPABASE_URL ?? '',
-    EXPO_PUBLIC_SUPABASE_KEY: env.EXPO_PUBLIC_SUPABASE_KEY ?? '',
-    EXPO_PUBLIC_SUPABASE_USE_LOCAL: env.EXPO_PUBLIC_SUPABASE_USE_LOCAL ?? '',
+    EXPO_PUBLIC_SUPABASE_URL:
+      env.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || '',
+    EXPO_PUBLIC_SUPABASE_KEY:
+      env.EXPO_PUBLIC_SUPABASE_KEY || process.env.EXPO_PUBLIC_SUPABASE_KEY || '',
+    EXPO_PUBLIC_SUPABASE_USE_LOCAL:
+      env.EXPO_PUBLIC_SUPABASE_USE_LOCAL || process.env.EXPO_PUBLIC_SUPABASE_USE_LOCAL || '',
   };
 }
 
