@@ -1,24 +1,24 @@
-import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useURL } from 'expo-linking';
-import type { AppTheme } from '../../constants/theme';
-import { useAppTheme } from '../../contexts/ThemeContext';
-import { useThemedStyles } from '../../hooks/use-themed-styles';
+import { useURL } from "expo-linking";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import { ActivityIndicator, Alert, StyleSheet, View } from "react-native";
+import type { AppTheme } from "../../constants/theme";
+import { useAppTheme } from "../../contexts/ThemeContext";
+import { useThemedStyles } from "../../hooks/use-themed-styles";
 import {
-  completeAuthFromCallbackUrl,
-  type AuthCallbackParams,
-} from '../../lib/authCallback';
+    completeAuthFromCallbackUrl,
+    type AuthCallbackParams,
+} from "../../lib/authCallback";
 
 function buildCallbackUrl(
   baseUrl: string | null,
-  params: Record<string, string | string[] | undefined>
+  params: Record<string, string | string[] | undefined>,
 ): string | null {
   if (baseUrl) return baseUrl;
 
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (typeof value === 'string' && value.length > 0) {
+    if (typeof value === "string" && value.length > 0) {
       query.set(key, value);
     }
   }
@@ -47,11 +47,11 @@ export default function AuthCallbackScreen() {
     void (async () => {
       const { error } = await completeAuthFromCallbackUrl(callbackUrl);
       if (error) {
-        Alert.alert('Sign-in failed', error.message);
-        router.replace('/(auth)/login');
+        Alert.alert("Sign-in failed", error.message);
+        router.replace("/(auth)/login");
         return;
       }
-      router.replace('/');
+      router.replace("/");
     })();
   }, [url, params, router]);
 
@@ -66,8 +66,8 @@ function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: theme.colors.background,
     },
   });

@@ -1,74 +1,82 @@
-import React, { useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import * as AppleAuthentication from "expo-apple-authentication";
+import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-} from 'react-native';
-import { supabase } from '../../lib/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import { getAuthRedirectUri } from '../../lib/authCallback';
-import { BrandLogo } from '../../components/BrandLogo';
-import { GoogleSignIn } from '../../components/GoogleSignIn';
-import type { AppTheme } from '../../constants/theme';
-import { useAppTheme } from '../../contexts/ThemeContext';
-import { useThemedStyles } from '../../hooks/use-themed-styles';
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { BrandLogo } from "../../components/BrandLogo";
+import { GoogleSignIn } from "../../components/GoogleSignIn";
+import type { AppTheme } from "../../constants/theme";
+import { useAppTheme } from "../../contexts/ThemeContext";
+import { useThemedStyles } from "../../hooks/use-themed-styles";
+import { getAuthRedirectUri } from "../../lib/authCallback";
+import { supabase } from "../../lib/supabase";
 
 export default function LoginScreen() {
   const { theme, isDark } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
-  const [verificationSource, setVerificationSource] = useState<'signin' | 'signup' | null>(null);
-  const showAppleSignIn = Platform.OS === 'ios';
-  const showGoogleSignIn = Platform.OS === 'android';
+  const [verificationSource, setVerificationSource] = useState<
+    "signin" | "signup" | null
+  >(null);
+  const showAppleSignIn = Platform.OS === "ios";
+  const showGoogleSignIn = Platform.OS === "android";
   const showSocialSignIn = showAppleSignIn || showGoogleSignIn;
 
   function isEmailNotConfirmedError(error: { message: string }) {
-    return error.message.toLowerCase().includes('email not confirmed');
+    return error.message.toLowerCase().includes("email not confirmed");
   }
 
   function isExistingAccountError(error: { message: string }) {
     const message = error.message.toLowerCase();
-    return message.includes('already registered') || message.includes('user already exists');
+    return (
+      message.includes("already registered") ||
+      message.includes("user already exists")
+    );
   }
 
   async function sendVerificationCode(): Promise<boolean> {
     const { error } = await supabase.auth.resend({
-      type: 'signup',
+      type: "signup",
       email,
     });
     if (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert("Error", error.message);
       return false;
     }
     return true;
   }
 
-  async function goToEmailVerification(source: 'signin' | 'signup', resendCode = true) {
+  async function goToEmailVerification(
+    source: "signin" | "signup",
+    resendCode = true,
+  ) {
     setVerificationSource(source);
-    setIsSignUp(source === 'signup');
+    setIsSignUp(source === "signup");
     if (resendCode) {
       await sendVerificationCode();
     }
     setPendingVerification(true);
     Alert.alert(
-      'Email Not Verified',
-      'Your email address has not been verified yet. Enter the 6-digit code we sent to your email, or request a new one.'
+      "Email Not Verified",
+      "Your email address has not been verified yet. Enter the 6-digit code we sent to your email, or request a new one.",
     );
   }
 
@@ -83,14 +91,14 @@ export default function LoginScreen() {
     }
 
     if (isEmailNotConfirmedError(error)) {
-      await goToEmailVerification('signup');
+      await goToEmailVerification("signup");
       return;
     }
 
     Alert.alert(
-      'Account Exists',
-      'An account with this email already exists. Please sign in instead.',
-      [{ text: 'OK', onPress: () => setIsSignUp(false) }]
+      "Account Exists",
+      "An account with this email already exists. Please sign in instead.",
+      [{ text: "OK", onPress: () => setIsSignUp(false) }],
     );
   }
 
@@ -103,9 +111,9 @@ export default function LoginScreen() {
 
     if (error) {
       if (isEmailNotConfirmedError(error)) {
-        await goToEmailVerification('signin');
+        await goToEmailVerification("signin");
       } else {
-        Alert.alert('Error', error.message);
+        Alert.alert("Error", error.message);
       }
     }
     setLoading(false);
@@ -122,18 +130,22 @@ export default function LoginScreen() {
       if (isExistingAccountError(error)) {
         await handleExistingAccountOnSignUp();
       } else {
-        Alert.alert('Error', error.message);
+        Alert.alert("Error", error.message);
       }
     } else if (data.session) {
       // Handled by layout
-    } else if (data.user && data.user.identities && data.user.identities.length === 0) {
+    } else if (
+      data.user &&
+      data.user.identities &&
+      data.user.identities.length === 0
+    ) {
       await handleExistingAccountOnSignUp();
     } else {
-      setVerificationSource('signup');
+      setVerificationSource("signup");
       setPendingVerification(true);
       Alert.alert(
-        'Verify your email',
-        'We sent a 6-digit code to your email. Enter it below to finish creating your account.'
+        "Verify your email",
+        "We sent a 6-digit code to your email. Enter it below to finish creating your account.",
       );
     }
     setLoading(false);
@@ -145,20 +157,20 @@ export default function LoginScreen() {
     let { error } = await supabase.auth.verifyOtp({
       email,
       token: trimmedOtp,
-      type: 'signup',
+      type: "signup",
     });
 
     if (error) {
       const retry = await supabase.auth.verifyOtp({
         email,
         token: trimmedOtp,
-        type: 'email',
+        type: "email",
       });
       error = retry.error;
     }
 
     if (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert("Error", error.message);
     }
     setLoading(false);
   }
@@ -167,14 +179,20 @@ export default function LoginScreen() {
     setLoading(true);
     const sent = await sendVerificationCode();
     if (sent) {
-      Alert.alert('Sent', 'A new 6-digit verification code was sent to your email.');
+      Alert.alert(
+        "Sent",
+        "A new 6-digit verification code was sent to your email.",
+      );
     }
     setLoading(false);
   }
 
   async function handleForgotPassword() {
     if (!email) {
-      Alert.alert('Email Required', 'Please enter your email address to reset your password.');
+      Alert.alert(
+        "Email Required",
+        "Please enter your email address to reset your password.",
+      );
       return;
     }
     setLoading(true);
@@ -182,9 +200,9 @@ export default function LoginScreen() {
       redirectTo: getAuthRedirectUri(),
     });
     if (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert("Error", error.message);
     } else {
-      Alert.alert('Success', 'Check your email for the password reset link.');
+      Alert.alert("Success", "Check your email for the password reset link.");
     }
     setLoading(false);
   }
@@ -200,20 +218,20 @@ export default function LoginScreen() {
       });
       if (credential.identityToken) {
         const { error } = await supabase.auth.signInWithIdToken({
-          provider: 'apple',
+          provider: "apple",
           token: credential.identityToken,
         });
         if (error) {
-          Alert.alert('Error', error.message);
+          Alert.alert("Error", error.message);
         }
       } else {
-        throw new Error('No identityToken returned from Apple.');
+        throw new Error("No identityToken returned from Apple.");
       }
     } catch (e: any) {
-      if (e.code === 'ERR_REQUEST_CANCELED') {
+      if (e.code === "ERR_REQUEST_CANCELED") {
         // user canceled
       } else {
-        Alert.alert('Error', e.message || 'Apple Sign in Failed.');
+        Alert.alert("Error", e.message || "Apple Sign in Failed.");
       }
     } finally {
       setLoading(false);
@@ -222,14 +240,17 @@ export default function LoginScreen() {
 
   if (pendingVerification) {
     const verificationSubtitle =
-      verificationSource === 'signin'
+      verificationSource === "signin"
         ? `Your email hasn't been verified yet. Enter the 6-digit code we sent to ${email} to sign in.`
-        : verificationSource === 'signup'
+        : verificationSource === "signup"
           ? `Your email hasn't been verified yet. Enter the 6-digit code we sent to ${email} to finish creating your account.`
           : `We sent a 6-digit code to ${email}. Enter it below to verify your account.`;
 
     return (
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.container}
+      >
         <View style={styles.content}>
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>{verificationSubtitle}</Text>
@@ -247,7 +268,11 @@ export default function LoginScreen() {
             />
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={verifyOtp} disabled={loading || otp.length < 6}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={verifyOtp}
+            disabled={loading || otp.length < 6}
+          >
             {loading ? (
               <ActivityIndicator color={theme.colors.textInverted} />
             ) : (
@@ -260,18 +285,22 @@ export default function LoginScreen() {
             onPress={resendVerification}
             disabled={loading}
           >
-            <Text style={styles.secondaryButtonText}>Resend verification email</Text>
+            <Text style={styles.secondaryButtonText}>
+              Resend verification email
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => {
               setPendingVerification(false);
-              setOtp('');
+              setOtp("");
             }}
           >
             <Text style={styles.secondaryButtonText}>
-              {verificationSource === 'signin' ? 'Back to Sign In' : 'Back to Sign Up'}
+              {verificationSource === "signin"
+                ? "Back to Sign In"
+                : "Back to Sign Up"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -281,15 +310,19 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           <BrandLogo size={120} style={styles.logo} />
-          <Text style={styles.title}>{isSignUp ? 'Create an Account' : 'Welcome Back'}</Text>
+          <Text style={styles.title}>
+            {isSignUp ? "Create an Account" : "Welcome Back"}
+          </Text>
           <Text style={styles.subtitle}>
-            {isSignUp ? 'Sign up to get started' : 'Sign in to continue to your account'}
+            {isSignUp
+              ? "Sign up to get started"
+              : "Sign in to continue to your account"}
           </Text>
 
           {showSocialSignIn && (
@@ -297,11 +330,15 @@ export default function LoginScreen() {
               <View style={styles.socialContainer}>
                 {showAppleSignIn && (
                   <AppleAuthentication.AppleAuthenticationButton
-                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonType={
+                      AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+                    }
                     buttonStyle={
                       isDark
-                        ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                        : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                        ? AppleAuthentication.AppleAuthenticationButtonStyle
+                            .WHITE
+                        : AppleAuthentication.AppleAuthenticationButtonStyle
+                            .BLACK
                     }
                     cornerRadius={12}
                     style={styles.appleButton}
@@ -336,8 +373,13 @@ export default function LoginScreen() {
             <View style={styles.passwordHeader}>
               <Text style={styles.label}>Password</Text>
               {!isSignUp && (
-                <TouchableOpacity onPress={handleForgotPassword} disabled={loading}>
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                <TouchableOpacity
+                  onPress={handleForgotPassword}
+                  disabled={loading}
+                >
+                  <Text style={styles.forgotPasswordText}>
+                    Forgot Password?
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -355,7 +397,11 @@ export default function LoginScreen() {
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(!showPassword)}
               >
-                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.textSecondary} />
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -368,13 +414,20 @@ export default function LoginScreen() {
             {loading ? (
               <ActivityIndicator color={theme.colors.textInverted} />
             ) : (
-              <Text style={styles.primaryButtonText}>{isSignUp ? 'Sign Up' : 'Sign In'}</Text>
+              <Text style={styles.primaryButtonText}>
+                {isSignUp ? "Sign Up" : "Sign In"}
+              </Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setIsSignUp(!isSignUp)}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setIsSignUp(!isSignUp)}
+          >
             <Text style={styles.secondaryButtonText}>
-              {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+              {isSignUp
+                ? "Already have an account? Sign In"
+                : "Don't have an account? Sign Up"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -395,7 +448,7 @@ function createStyles(theme: AppTheme) {
     content: {
       flex: 1,
       padding: theme.spacing.lg,
-      justifyContent: 'center',
+      justifyContent: "center",
       paddingTop: 64,
     },
     logo: {
@@ -418,12 +471,12 @@ function createStyles(theme: AppTheme) {
       gap: 12,
     },
     appleButton: {
-      width: '100%',
+      width: "100%",
       height: 52,
     },
     dividerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       marginBottom: theme.spacing.lg,
     },
     dividerLine: {
@@ -441,9 +494,9 @@ function createStyles(theme: AppTheme) {
       marginBottom: 20,
     },
     passwordHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
       marginBottom: theme.spacing.sm,
     },
     label: {
@@ -467,13 +520,13 @@ function createStyles(theme: AppTheme) {
       backgroundColor: theme.colors.surface,
     },
     otpInput: {
-      textAlign: 'center',
+      textAlign: "center",
       fontSize: 24,
       letterSpacing: 4,
     },
     passwordInputContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       borderWidth: 1,
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.md,
@@ -493,9 +546,9 @@ function createStyles(theme: AppTheme) {
       backgroundColor: theme.colors.primary,
       borderRadius: theme.borderRadius.md,
       padding: theme.spacing.md,
-      alignItems: 'center',
+      alignItems: "center",
       marginTop: 12,
-      shadowColor: '#000',
+      shadowColor: "#000",
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
       shadowRadius: 3,
@@ -508,7 +561,7 @@ function createStyles(theme: AppTheme) {
     },
     secondaryButton: {
       marginTop: 20,
-      alignItems: 'center',
+      alignItems: "center",
       marginBottom: theme.spacing.xl,
     },
     secondaryButtonText: {

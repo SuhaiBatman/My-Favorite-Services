@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { FavoritesProvider } from '../contexts/FavoritesContext';
 import { NotificationsProvider } from '../contexts/NotificationsContext';
 import { OnboardingCelebrationProvider, useOnboardingCelebration } from '../contexts/OnboardingCelebrationContext';
+import { RevenueCatProvider } from '../contexts/RevenueCatContext';
 import { BrandLogo } from '../components/BrandLogo';
 import { OnboardingCompleteOverlay } from '../components/OnboardingCompleteOverlay';
 import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
@@ -224,13 +225,15 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <FavoritesProvider>
-          <NotificationsProvider>
-            <OnboardingCelebrationProvider>
-              <InitialLayout fontsReady={fontsReady} />
-            </OnboardingCelebrationProvider>
-          </NotificationsProvider>
-        </FavoritesProvider>
+        <RevenueCatProvider>
+          <FavoritesProvider>
+            <NotificationsProvider>
+              <OnboardingCelebrationProvider>
+                <InitialLayout fontsReady={fontsReady} />
+              </OnboardingCelebrationProvider>
+            </NotificationsProvider>
+          </FavoritesProvider>
+        </RevenueCatProvider>
       </AuthProvider>
     </ThemeProvider>
   );

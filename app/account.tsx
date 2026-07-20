@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   Pressable,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { ChangeCredentialSheet } from '../components/ChangeCredentialSheet';
 import { useAuth } from '../contexts/AuthContext';
+import { useRevenueCat } from '../contexts/RevenueCatContext';
 import {
   ColorSchemePreference,
   useAppTheme,
@@ -25,6 +27,14 @@ import type { AppTheme } from '../constants/theme';
 import { profileDisplayName } from '../lib/format';
 import { fetchConfirmedContact, type ConfirmedContact } from '../lib/accountCredentials';
 import { deleteOwnAccount } from '../lib/deleteAccount';
+import {
+  getPurchasesErrorMessage,
+  isUserCancelledPurchase,
+  PAYWALL_RESULT,
+  presentCustomerCenter,
+  presentRevenueCatPaywall,
+  restorePurchases,
+} from '../lib/revenueCatService';
 import { supabase } from '../lib/supabase';
 
 const APPEARANCE_OPTIONS: {
@@ -167,9 +177,29 @@ function createStyles(theme: AppTheme) {
   };
 }
 
+function formatSubscriptionStatus(
+  hasBasicAccess: boolean,
+  basicExpiresAt: string | null,
+  isLoading: boolean
+): string {
+  if (isLoading) return 'Checking…';
+  if (!hasBasicAccess) return 'Not subscribed · 7-day free trial available';
+  if (!basicExpiresAt) return 'Basic · Active';
+  const expires = new Date(basicExpiresAt);
+  if (Number.isNaN(expires.getTime())) return 'Basic · Active';
+  return `Basic · Renews ${expires.toLocaleDateString()}`;
+}
+
 export default function AccountScreen() {
   const router = useRouter();
   const { user, role } = useAuth();
+  const {
+    hasBasicAccess,
+    basicExpiresAt,
+    isLoading: subscriptionLoading,
+    isReady: subscriptionReady,
+    refreshCustomerInfo,
+  } = useRevenueCat();
   const { theme, preference, setPreference, isDark } = useAppTheme();
   const styles = useThemedStyles(createStyles);
 
@@ -183,6 +213,7 @@ export default function AccountScreen() {
   });
   const [credentialSheet, setCredentialSheet] = useState<'email' | 'phone' | null>(null);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
 
   const reloadContact = React.useCallback(async () => {
     const contact = await fetchConfirmedContact(user);
@@ -205,6 +236,69 @@ export default function AccountScreen() {
     } else {
       setDisplayPhone(value);
       Alert.alert('Phone updated', 'Your phone number has been verified and updated.');
+    }
+  };
+
+  const handleSubscribe = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Unavailable', 'Subscriptions are only available in the iOS and Android apps.');
+      return;
+    }
+    if (!subscriptionReady) {
+      Alert.alert(
+        'Subscription unavailable',
+        'RevenueCat is not configured yet. Add your API keys and rebuild the app.'
+      );
+      return;
+    }
+    setSubscriptionBusy(true);
+    try {
+      if (hasBasicAccess) {
+        await presentCustomerCenter();
+      } else {
+        const result = await presentRevenueCatPaywall({ displayCloseButton: true });
+        if (result === PAYWALL_RESULT.PURCHASED || result === PAYWALL_RESULT.RESTORED) {
+          await refreshCustomerInfo();
+        }
+      }
+    } catch (error) {
+      if (!isUserCancelledPurchase(error)) {
+        Alert.alert('Subscription', getPurchasesErrorMessage(error));
+      }
+    } finally {
+      setSubscriptionBusy(false);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Unavailable', 'Restore purchases is only available in the iOS and Android apps.');
+      return;
+    }
+    if (!subscriptionReady) {
+      Alert.alert(
+        'Subscription unavailable',
+        'RevenueCat is not configured yet. Add your API keys and rebuild the app.'
+      );
+      return;
+    }
+    setSubscriptionBusy(true);
+    try {
+      const info = await restorePurchases();
+      await refreshCustomerInfo();
+      const restored = Object.keys(info.entitlements.active).length > 0;
+      Alert.alert(
+        restored ? 'Purchases restored' : 'Nothing to restore',
+        restored
+          ? 'Your Basic subscription is active again.'
+          : 'No previous purchases were found for this Apple/Google account.'
+      );
+    } catch (error) {
+      if (!isUserCancelledPurchase(error)) {
+        Alert.alert('Restore failed', getPurchasesErrorMessage(error));
+      }
+    } finally {
+      setSubscriptionBusy(false);
     }
   };
 
@@ -347,6 +441,51 @@ export default function AccountScreen() {
             })}
           </View>
         </View>
+
+        {Platform.OS !== 'web' ? (
+          <View>
+            <Text style={styles.sectionTitle}>Subscription</Text>
+            <Card variant="outlined">
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => {
+                  void handleSubscribe();
+                }}
+                disabled={subscriptionBusy}
+              >
+                <View style={styles.linkIcon}>
+                  <Ionicons name="diamond-outline" size={18} color={theme.colors.secondary} />
+                </View>
+                <View style={styles.contactCopy}>
+                  <Text style={styles.linkText}>
+                    {hasBasicAccess ? 'Manage subscription' : 'Start Basic · 7-day free trial'}
+                  </Text>
+                  <Text style={styles.contactValue}>
+                    {formatSubscriptionStatus(
+                      hasBasicAccess,
+                      basicExpiresAt,
+                      subscriptionLoading || subscriptionBusy
+                    )}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+              </Pressable>
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => {
+                  void handleRestorePurchases();
+                }}
+                disabled={subscriptionBusy}
+              >
+                <View style={styles.linkIcon}>
+                  <Ionicons name="refresh-outline" size={18} color={theme.colors.secondary} />
+                </View>
+                <Text style={styles.linkText}>Restore purchases</Text>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+              </Pressable>
+            </Card>
+          </View>
+        ) : null}
 
         {user?.id && (role === 'employee' || role === 'business') ? (
           <Card variant="outlined">

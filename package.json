@@ -36,7 +36,8 @@
     "eas:credentials:ios": "npx eas-cli credentials:configure-build -p ios -e production",
     "postinstall": "node scripts/lan-host.mjs && node scripts/write-supabase-env.cjs local",
     "supabase-env:sync": "node scripts/write-supabase-env.cjs local",
-    "supabase-env:sync:prod": "node scripts/write-supabase-env.cjs production"
+    "supabase-env:sync:prod": "node scripts/write-supabase-env.cjs production",
+    "reviewers:create": "node scripts/create-reviewer-accounts.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -74,6 +75,8 @@
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-pager-view": "6.9.1",
+    "react-native-purchases": "^10.4.4",
+    "react-native-purchases-ui": "^10.4.4",
     "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
